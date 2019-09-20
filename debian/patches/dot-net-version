@@ -5,7 +5,7 @@
      <RootNamespace>Org.BouncyCastle</RootNamespace>
      <AssemblyName>BouncyCastle</AssemblyName>
 -    <TargetFrameworkVersion>v2.0</TargetFrameworkVersion>
-+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
++    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
    </PropertyGroup>
    <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
      <DebugSymbols>true</DebugSymbols>
@@ -13,8 +13,8 @@
      <Optimize>false</Optimize>
 -    <OutputPath>bin\Debug\lib\net20\</OutputPath>
 -    <IntermediateOutputPath>obj\Debug\lib\net20\</IntermediateOutputPath>
-+    <OutputPath>bin\Debug\lib\net45\</OutputPath>
-+    <IntermediateOutputPath>obj\Debug\lib\net45\</IntermediateOutputPath>
++    <OutputPath>bin\Debug\lib\net40\</OutputPath>
++    <IntermediateOutputPath>obj\Debug\lib\net40\</IntermediateOutputPath>
      <DefineConstants>DEBUG;TRACE;INCLUDE_IDEA;</DefineConstants>
      <ErrorReport>prompt</ErrorReport>
      <WarningLevel>4</WarningLevel>
@@ -24,8 +24,8 @@
      <Optimize>true</Optimize>
 -    <OutputPath>bin\Release\lib\net20\</OutputPath>
 -    <IntermediateOutputPath>obj\Release\lib\net20\</IntermediateOutputPath>
-+    <OutputPath>bin\Release\lib\net45\</OutputPath>
-+    <IntermediateOutputPath>obj\Release\lib\net45\</IntermediateOutputPath>
++    <OutputPath>bin\Release\lib\net40\</OutputPath>
++    <IntermediateOutputPath>obj\Release\lib\net40\</IntermediateOutputPath>
      <DefineConstants>TRACE;INCLUDE_IDEA;</DefineConstants>
      <DocumentationFile>doc\BouncyCastle.xml</DocumentationFile>
      <ErrorReport>prompt</ErrorReport>
