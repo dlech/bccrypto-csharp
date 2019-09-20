@@ -22,6 +22,6 @@ override_dh_auto_build:
 	dh_auto_build
 
 override_dh_auto_install:
-	mkdir -p $(CURDIR)/debian/libbccrypto-cil/usr/lib/cil/bccrypto-csharp
-	cp $(CURDIR)/crypto/bin/Release/lib/net20/BouncyCastle.dll $(CURDIR)/debian/libbccrypto-cil/usr/lib/cil/bccrypto-csharp/
+	mkdir -p $(CURDIR)/debian/libbccrypto-cli/usr/lib/cli/bccrypto-csharp
+	cp $(CURDIR)/crypto/bin/Release/lib/net20/BouncyCastle.dll $(CURDIR)/debian/libbccrypto-cli/usr/lib/cli/bccrypto-csharp/
 	dh_auto_install
