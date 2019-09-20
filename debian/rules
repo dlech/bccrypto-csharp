@@ -18,10 +18,10 @@ override_dh_auto_clean:
 	dh_auto_clean
 
 override_dh_auto_build:
-	xbuild /property:Configuration=Release BouncyCastle.sln
+	xbuild /property:TargetFrameworkVersion=v4.5 /property:Configuration=Release BouncyCastle.sln
 	dh_auto_build
 
 override_dh_auto_install:
 	mkdir -p $(CURDIR)/debian/libbccrypto-cil/usr/lib/cil/bccrypto-csharp
-	cp $(CURDIR)/crypto/bin/Release/lib/net45/BouncyCastle.dll $(CURDIR)/debian/libbccrypto-cil/usr/lib/cil/bccrypto-csharp/
+	cp $(CURDIR)/crypto/bin/Release/lib/net20/BouncyCastle.dll $(CURDIR)/debian/libbccrypto-cil/usr/lib/cil/bccrypto-csharp/
 	dh_auto_install
