@@ -1,0 +1,16 @@
+Source: bccrypto-csharp
+Section: libs
+Priority: optional
+Maintainer: David Lechner <david@lechnology.com>
+Build-Depends: debhelper (>= 10), cli-common-dev (>= 0.8)
+Standards-Version: 4.1.4
+Homepage: https://lechnology.com/bccrypto-csharp
+Vcs-Git: https://github.com/dlech/bccrypto-csharp.git
+Vcs-Browser: https://github.com/dlech/bccrypto-csharp
+
+Package: libbccrypto-cil
+Architecture: all
+Depends: ${misc:Depends}, ${cli:Depends}
+Description: Bouncy Castle Crypto Package For C Sharp
+ The Bouncy Castle Crypto package is a C# implementation of cryptographic
+ algorithms and protocols.

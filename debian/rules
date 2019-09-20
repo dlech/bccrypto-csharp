@@ -1,0 +1,27 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+# Sample debian/rules that uses debhelper.
+# This file was originally written by Joey Hess and Craig Small.
+# As a special exception, when this file is copied by dh-make into a
+# dh-make output file, you may use that output file without restriction.
+# This special exception was added by Craig Small in version 0.37 of dh-make.
+
+# Uncomment this to turn on verbose mode.
+export DH_VERBOSE=1
+
+%:
+	dh $@ --with cli
+
+override_dh_auto_clean:
+	xbuild /target:Clean /property:Configuration=Release BouncyCastle.sln
+	rm -rf -- **/bin **/obj **/doc
+	dh_auto_clean
+
+override_dh_auto_build:
+	xbuild /property:Configuration=Release BouncyCastle.sln
+	dh_auto_build
+
+override_dh_auto_install:
+	mkdir -p $(CURDIR)/debian/libbccrypto-cil/usr/lib/cil/bccrypto-csharp
+	cp $(CURDIR)/crypto/bin/Release/lib/net45/BouncyCastle.dll $(CURDIR)/debian/libbccrypto-cil/usr/lib/cil/bccrypto-csharp/
+	dh_auto_install
