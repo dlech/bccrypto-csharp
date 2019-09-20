@@ -1,5 +1,5 @@
 Source: bccrypto-csharp
-Section: libs
+Section: cli-mono
 Priority: optional
 Maintainer: David Lechner <david@lechnology.com>
 Build-Depends: debhelper (>= 10), cli-common-dev (>= 0.8)
