@@ -1,3 +1,9 @@
+bccrypto-csharp (1.8.5-5) bionic; urgency=medium
+
+  * debian: library must end in -cil
+
+ -- David Lechner <david@lechnology.com>  Fri, 20 Sep 2019 19:24:13 -0500
+
 bccrypto-csharp (1.8.5-4) bionic; urgency=medium
 
   * debian: fix s/cil/cli/ typo
