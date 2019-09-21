@@ -8,7 +8,7 @@ Homepage: https://lechnology.com/bccrypto-csharp
 Vcs-Git: https://github.com/dlech/bccrypto-csharp.git
 Vcs-Browser: https://github.com/dlech/bccrypto-csharp
 
-Package: libbccrypto-cli
+Package: libbccrypto-cil
 Architecture: all
 Depends: ${misc:Depends}, ${cli:Depends}
 Description: Bouncy Castle Crypto Package For C Sharp
