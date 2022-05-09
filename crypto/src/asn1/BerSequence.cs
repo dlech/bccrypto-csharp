@@ -1,3 +1,7 @@
+using System;
+
+using Org.BouncyCastle.Utilities;
+
 namespace Org.BouncyCastle.Asn1
 {
 	public class BerSequence
@@ -5,64 +9,54 @@ namespace Org.BouncyCastle.Asn1
 	{
 		public static new readonly BerSequence Empty = new BerSequence();
 
-		public static new BerSequence FromVector(
-			Asn1EncodableVector v)
+		public static new BerSequence FromVector(Asn1EncodableVector elementVector)
 		{
-			return v.Count < 1 ? Empty : new BerSequence(v);
+            return elementVector.Count < 1 ? Empty : new BerSequence(elementVector);
 		}
 
 		/**
 		 * create an empty sequence
 		 */
 		public BerSequence()
+            : base()
 		{
 		}
 
 		/**
 		 * create a sequence containing one object
 		 */
-		public BerSequence(
-			Asn1Encodable obj)
-			: base(obj)
+		public BerSequence(Asn1Encodable element)
+            : base(element)
 		{
 		}
 
-		public BerSequence(
-			params Asn1Encodable[] v)
-			: base(v)
+		public BerSequence(params Asn1Encodable[] elements)
+            : base(elements)
 		{
 		}
 
 		/**
 		 * create a sequence containing a vector of objects.
 		 */
-		public BerSequence(
-			Asn1EncodableVector v)
-			: base(v)
+		public BerSequence(Asn1EncodableVector elementVector)
+            : base(elementVector)
 		{
 		}
 
-		/*
-		 */
-		internal override void Encode(
-			DerOutputStream derOut)
+        internal override int EncodedLength(bool withID)
+        {
+            throw Platform.CreateNotImplementedException("BerSequence.EncodedLength");
+        }
+
+        internal override void Encode(Asn1OutputStream asn1Out, bool withID)
 		{
-			if (derOut is Asn1OutputStream || derOut is BerOutputStream)
-			{
-				derOut.WriteByte(Asn1Tags.Sequence | Asn1Tags.Constructed);
-				derOut.WriteByte(0x80);
-
-				foreach (Asn1Encodable o in this)
-				{
-					derOut.WriteObject(o);
-				}
-
-				derOut.WriteByte(0x00);
-				derOut.WriteByte(0x00);
+			if (asn1Out.IsBer)
+            {
+                asn1Out.WriteEncodingIL(withID, Asn1Tags.Constructed | Asn1Tags.Sequence, elements);
 			}
 			else
 			{
-				base.Encode(derOut);
+				base.Encode(asn1Out, withID);
 			}
 		}
 	}

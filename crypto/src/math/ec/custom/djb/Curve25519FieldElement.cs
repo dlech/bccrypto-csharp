@@ -8,7 +8,7 @@ namespace Org.BouncyCastle.Math.EC.Custom.Djb
     internal class Curve25519FieldElement
         : AbstractFpFieldElement
     {
-        public static readonly BigInteger Q = Curve25519.q;
+        public static readonly BigInteger Q = Nat256.ToBigInteger(Curve25519Field.P);
 
         // Calculated as ECConstants.TWO.modPow(Q.shiftRight(2), Q)
         private static readonly uint[] PRECOMP_POW2 = new uint[]{ 0x4a0ea0b0, 0xc4ee1b27, 0xad2fe478, 0x2f431806,
@@ -96,7 +96,7 @@ namespace Org.BouncyCastle.Math.EC.Custom.Djb
         {
             //return Multiply(b.Invert());
             uint[] z = Nat256.Create();
-            Mod.Invert(Curve25519Field.P, ((Curve25519FieldElement)b).x, z);
+            Curve25519Field.Inv(((Curve25519FieldElement)b).x, z);
             Curve25519Field.Multiply(z, x, z);
             return new Curve25519FieldElement(z);
         }
@@ -119,7 +119,7 @@ namespace Org.BouncyCastle.Math.EC.Custom.Djb
         {
             //return new Curve25519FieldElement(ToBigInteger().ModInverse(Q));
             uint[] z = Nat256.Create();
-            Mod.Invert(Curve25519Field.P, x, z);
+            Curve25519Field.Inv(x, z);
             return new Curve25519FieldElement(z);
         }
 

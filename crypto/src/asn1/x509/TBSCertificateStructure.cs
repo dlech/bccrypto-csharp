@@ -1,7 +1,6 @@
 using System;
 
-using Org.BouncyCastle.Asn1.Pkcs;
-using Org.BouncyCastle.Math;
+using Org.BouncyCastle.Utilities;
 
 namespace Org.BouncyCastle.Asn1.X509
 {
@@ -69,7 +68,7 @@ namespace Org.BouncyCastle.Asn1.X509
 			//
 			// some certficates don't include a version number - we assume v1
 			//
-			if (seq[0] is DerTaggedObject)
+			if (seq[0] is Asn1TaggedObject)
 			{
 				version = DerInteger.GetInstance((Asn1TaggedObject)seq[0], true);
 			}
@@ -82,15 +81,15 @@ namespace Org.BouncyCastle.Asn1.X509
             bool isV1 = false;
             bool isV2 = false;
 
-            if (version.Value.Equals(BigInteger.Zero))
+            if (version.HasValue(0))
             {
                 isV1 = true;
             }
-            else if (version.Value.Equals(BigInteger.One))
+            else if (version.HasValue(1))
             {
                 isV2 = true;
             }
-            else if (!version.Value.Equals(BigInteger.Two))
+            else if (!version.HasValue(2))
             {
                 throw new ArgumentException("version number not recognised");
             }
@@ -121,8 +120,7 @@ namespace Org.BouncyCastle.Asn1.X509
 
             while (extras > 0)
 			{
-				DerTaggedObject extra = (DerTaggedObject)seq[seqStart + 6 + extras];
-
+                Asn1TaggedObject extra = Asn1TaggedObject.GetInstance(seq[seqStart + 6 + extras]);
 				switch (extra.TagNo)
 				{
 				case 1:
@@ -154,7 +152,7 @@ namespace Org.BouncyCastle.Asn1.X509
 
 		public int Version
 		{
-			get { return version.Value.IntValue + 1; }
+            get { return version.IntValueExact + 1; }
 		}
 
 		public DerInteger VersionNumber
@@ -214,7 +212,45 @@ namespace Org.BouncyCastle.Asn1.X509
 
 		public override Asn1Object ToAsn1Object()
         {
-            return seq;
+            string property = Platform.GetEnvironmentVariable("Org.BouncyCastle.X509.Allow_Non-DER_TBSCert");
+            if (null == property || Platform.EqualsIgnoreCase("true", property))
+                return seq;
+
+            Asn1EncodableVector v = new Asn1EncodableVector();
+
+            // DEFAULT Zero
+            if (!version.HasValue(0))
+            {
+                v.Add(new DerTaggedObject(true, 0, version));
+            }
+
+            v.Add(serialNumber, signature, issuer);
+
+			//
+			// before and after dates
+			//
+			v.Add(new DerSequence(startDate, endDate));
+
+            if (subject != null)
+            {
+                v.Add(subject);
+            }
+            else
+            {
+                v.Add(DerSequence.Empty);
+            }
+
+            v.Add(subjectPublicKeyInfo);
+
+            // Note: implicit tag
+			v.AddOptionalTagged(false, 1, issuerUniqueID);
+
+			// Note: implicit tag
+			v.AddOptionalTagged(false, 2, subjectUniqueID);
+
+			v.AddOptionalTagged(true, 3, extensions);
+
+            return new DerSequence(v);
         }
     }
 }

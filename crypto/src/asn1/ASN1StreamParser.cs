@@ -10,31 +10,32 @@ namespace Org.BouncyCastle.Asn1
 
         private readonly byte[][] tmpBuffers;
 
-        public Asn1StreamParser(
-			Stream inStream)
-			: this(inStream, Asn1InputStream.FindLimit(inStream))
+        public Asn1StreamParser(Stream input)
+			: this(input, Asn1InputStream.FindLimit(input))
 		{
 		}
 
-		public Asn1StreamParser(
-			Stream	inStream,
-			int		limit)
-		{
-			if (!inStream.CanRead)
-				throw new ArgumentException("Expected stream to be readable", "inStream");
-
-			this._in = inStream;
-			this._limit = limit;
-            this.tmpBuffers = new byte[16][];
+        public Asn1StreamParser(byte[] encoding)
+            : this(new MemoryStream(encoding, false), encoding.Length)
+        {
         }
 
-		public Asn1StreamParser(
-			byte[] encoding)
-			: this(new MemoryStream(encoding, false), encoding.Length)
+        public Asn1StreamParser(Stream input, int limit)
+            : this(input, limit, new byte[16][])
 		{
-		}
+        }
 
-		internal IAsn1Convertible ReadIndef(int tagValue)
+        internal Asn1StreamParser(Stream input, int limit, byte[][] tmpBuffers)
+        {
+            if (!input.CanRead)
+                throw new ArgumentException("Expected stream to be readable", "input");
+
+            this._in = input;
+            this._limit = limit;
+            this.tmpBuffers = tmpBuffers;
+        }
+
+        internal IAsn1Convertible ReadIndef(int tagValue)
 		{
 			// Note: INDEF => CONSTRUCTED
 
@@ -59,7 +60,7 @@ namespace Org.BouncyCastle.Asn1
 			if (_in is IndefiniteLengthInputStream)
 			{
 				if (!constructed)
-					throw new IOException("indefinite length primitive encoding encountered");
+					throw new IOException("indefinite-length primitive encoding encountered");
 
 				return ReadIndef(tag);
 			}
@@ -134,78 +135,80 @@ namespace Org.BouncyCastle.Asn1
 			//
 			// calculate length
 			//
-			int length = Asn1InputStream.ReadLength(_in, _limit);
+			int length = Asn1InputStream.ReadLength(_in, _limit,
+                tagNo == Asn1Tags.OctetString || tagNo == Asn1Tags.Sequence || tagNo == Asn1Tags.Set || tagNo == Asn1Tags.External);
 
-			if (length < 0) // indefinite length method
+			if (length < 0) // indefinite-length method
 			{
 				if (!isConstructed)
-					throw new IOException("indefinite length primitive encoding encountered");
+					throw new IOException("indefinite-length primitive encoding encountered");
 
-				IndefiniteLengthInputStream indIn = new IndefiniteLengthInputStream(_in, _limit);
-				Asn1StreamParser sp = new Asn1StreamParser(indIn, _limit);
+                IndefiniteLengthInputStream indIn = new IndefiniteLengthInputStream(_in, _limit);
+                Asn1StreamParser sp = new Asn1StreamParser(indIn, _limit, tmpBuffers);
 
-				if ((tag & Asn1Tags.Application) != 0)
-				{
-					return new BerApplicationSpecificParser(tagNo, sp);
-				}
+                int tagClass = tag & Asn1Tags.Private;
+                if (0 != tagClass)
+                {
+                    if ((tag & Asn1Tags.Application) != 0)
+                        return new BerApplicationSpecificParser(tagNo, sp);
 
-				if ((tag & Asn1Tags.Tagged) != 0)
-				{
-					return new BerTaggedObjectParser(true, tagNo, sp);
-				}
+                    return new BerTaggedObjectParser(true, tagNo, sp);
+                }
 
-				return sp.ReadIndef(tagNo);
+                return sp.ReadIndef(tagNo);
 			}
 			else
 			{
-				DefiniteLengthInputStream defIn = new DefiniteLengthInputStream(_in, length);
+				DefiniteLengthInputStream defIn = new DefiniteLengthInputStream(_in, length, _limit);
 
-				if ((tag & Asn1Tags.Application) != 0)
-				{
-					return new DerApplicationSpecific(isConstructed, tagNo, defIn.ToArray());
-				}
+                int tagClass = tag & Asn1Tags.Private;
+                if (0 != tagClass)
+                {
+                    if ((tag & Asn1Tags.Application) != 0)
+                        return new DerApplicationSpecific(isConstructed, tagNo, defIn.ToArray());
 
-				if ((tag & Asn1Tags.Tagged) != 0)
-				{
-					return new BerTaggedObjectParser(isConstructed, tagNo, new Asn1StreamParser(defIn));
-				}
+                    return new BerTaggedObjectParser(isConstructed, tagNo,
+                        new Asn1StreamParser(defIn, defIn.Remaining, tmpBuffers));
+                }
 
-				if (isConstructed)
-				{
-					// TODO There are other tags that may be constructed (e.g. BitString)
-					switch (tagNo)
-					{
-						case Asn1Tags.OctetString:
-							//
-							// yes, people actually do this...
-							//
-							return new BerOctetStringParser(new Asn1StreamParser(defIn));
-						case Asn1Tags.Sequence:
-							return new DerSequenceParser(new Asn1StreamParser(defIn));
-						case Asn1Tags.Set:
-							return new DerSetParser(new Asn1StreamParser(defIn));
-						case Asn1Tags.External:
-							return new DerExternalParser(new Asn1StreamParser(defIn));
-						default:
-                            throw new IOException("unknown tag " + tagNo + " encountered");
+                if (!isConstructed)
+                {
+                    // Some primitive encodings can be handled by parsers too...
+                    switch (tagNo)
+                    {
+                        case Asn1Tags.OctetString:
+                            return new DerOctetStringParser(defIn);
                     }
-				}
 
-				// Some primitive encodings can be handled by parsers too...
-				switch (tagNo)
+                    try
+                    {
+                        return Asn1InputStream.CreatePrimitiveDerObject(tagNo, defIn, tmpBuffers);
+                    }
+                    catch (ArgumentException e)
+                    {
+                        throw new Asn1Exception("corrupted stream detected", e);
+                    }
+                }
+
+                Asn1StreamParser sp = new Asn1StreamParser(defIn, defIn.Remaining, tmpBuffers);
+
+                // TODO There are other tags that may be constructed (e.g. BitString)
+                switch (tagNo)
 				{
 					case Asn1Tags.OctetString:
-						return new DerOctetStringParser(defIn);
-				}
-
-				try
-				{
-					return Asn1InputStream.CreatePrimitiveDerObject(tagNo, defIn, tmpBuffers);
-				}
-				catch (ArgumentException e)
-				{
-					throw new Asn1Exception("corrupted stream detected", e);
-				}
+						//
+						// yes, people actually do this...
+						//
+						return new BerOctetStringParser(sp);
+					case Asn1Tags.Sequence:
+						return new DerSequenceParser(sp);
+					case Asn1Tags.Set:
+						return new DerSetParser(sp);
+					case Asn1Tags.External:
+						return new DerExternalParser(sp);
+					default:
+                        throw new IOException("unknown tag " + tagNo + " encountered");
+                }
 			}
 		}
 
@@ -218,17 +221,19 @@ namespace Org.BouncyCastle.Asn1
 			}
 		}
 
-		internal Asn1EncodableVector ReadVector()
-		{
-			Asn1EncodableVector v = new Asn1EncodableVector();
+        internal Asn1EncodableVector ReadVector()
+        {
+            IAsn1Convertible obj = ReadObject();
+            if (null == obj)
+                return new Asn1EncodableVector(0);
 
-			IAsn1Convertible obj;
-			while ((obj = ReadObject()) != null)
-			{
-				v.Add(obj.ToAsn1Object());
-			}
-
-			return v;
-		}
+            Asn1EncodableVector v = new Asn1EncodableVector();
+            do
+            {
+                v.Add(obj.ToAsn1Object());
+            }
+            while ((obj = ReadObject()) != null);
+            return v;
+        }
 	}
 }

@@ -577,11 +577,10 @@ namespace Org.BouncyCastle.Bcpg.OpenPgp.Tests
 
 		public override string Name
         {
-			get { return "PGPDSATest"; }
+			get { return "PgpDsaTest"; }
         }
 
-		public static void Main(
-			string[] args)
+		public static void Main(string[] args)
         {
 			RunTest(new PgpDsaTest());
         }

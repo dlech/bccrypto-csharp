@@ -8,38 +8,36 @@ namespace Org.BouncyCastle.Asn1
 		public const string Der = "DER";
 		public const string Ber = "BER";
 
+        public virtual void EncodeTo(Stream output)
+        {
+            ToAsn1Object().EncodeTo(output);
+        }
+
+        public virtual void EncodeTo(Stream output, string encoding)
+        {
+            ToAsn1Object().EncodeTo(output, encoding);
+        }
+
 		public byte[] GetEncoded()
         {
             MemoryStream bOut = new MemoryStream();
-            Asn1OutputStream aOut = new Asn1OutputStream(bOut);
-
-			aOut.WriteObject(this);
-
-			return bOut.ToArray();
+            EncodeTo(bOut);
+            return bOut.ToArray();
         }
 
-		public byte[] GetEncoded(
-			string encoding)
-		{
-			if (encoding.Equals(Der))
-			{
-				MemoryStream bOut = new MemoryStream();
-				DerOutputStream dOut = new DerOutputStream(bOut);
+        public byte[] GetEncoded(string encoding)
+        {
+            MemoryStream bOut = new MemoryStream();
+            EncodeTo(bOut, encoding);
+            return bOut.ToArray();
+        }
 
-				dOut.WriteObject(this);
-
-				return bOut.ToArray();
-			}
-
-			return GetEncoded();
-		}
-
-		/**
+        /**
 		* Return the DER encoding of the object, null if the DER encoding can not be made.
 		*
 		* @return a DER byte array, null otherwise.
 		*/
-		public byte[] GetDerEncoded()
+        public byte[] GetDerEncoded()
 		{
 			try
 			{
@@ -70,7 +68,7 @@ namespace Org.BouncyCastle.Asn1
 			Asn1Object o1 = ToAsn1Object();
 			Asn1Object o2 = other.ToAsn1Object();
 
-			return o1 == o2 || o1.CallAsn1Equals(o2);
+			return o1 == o2 || (null != o2 && o1.CallAsn1Equals(o2));
 		}
 
 		public abstract Asn1Object ToAsn1Object();

@@ -1,5 +1,6 @@
 using System;
 
+using Org.BouncyCastle.Crypto.Tests.Cavp;
 using Org.BouncyCastle.Utilities.Test;
 
 namespace Org.BouncyCastle.Crypto.Tests
@@ -12,6 +13,7 @@ namespace Org.BouncyCastle.Crypto.Tests
             new AesLightTest(),
             new AesFastTest(),
             new AesWrapTest(),
+            new AriaTest(),
             new DesTest(),
             new DesEdeTest(),
             new ModeTest(),
@@ -104,6 +106,7 @@ namespace Org.BouncyCastle.Crypto.Tests
             new Salsa20Test(),
             new XSalsa20Test(),
             new ChaChaTest(),
+            new ChaCha20Poly1305Test(),
             new CMacTest(),
             new EaxTest(),
             new GcmTest(),
@@ -139,6 +142,15 @@ namespace Org.BouncyCastle.Crypto.Tests
             new X448Test(),
             new Ed25519Test(),
             new Ed448Test(),
+            new KdfCounterTests(), 
+            new KdfDoublePipelineTests(), 
+            new KdfFeedbackCounterTests(),
+            new CShakeTest(),
+            new KMacTest(),
+            new GcmSivTest(),
+            new ParallelHashTest(),
+            new SP80038GTest(),
+            new TupleHashTest(),
         };
 
         public static void Main(string[] args)

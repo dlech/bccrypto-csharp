@@ -5,7 +5,7 @@ using Org.BouncyCastle.Math.EC.Abc;
 using Org.BouncyCastle.Math.EC.Endo;
 using Org.BouncyCastle.Math.EC.Multiplier;
 using Org.BouncyCastle.Math.Field;
-using Org.BouncyCastle.Math.Raw;
+using Org.BouncyCastle.Security;
 using Org.BouncyCastle.Utilities;
 
 namespace Org.BouncyCastle.Math.EC
@@ -98,6 +98,10 @@ namespace Org.BouncyCastle.Math.EC
         public abstract int FieldSize { get; }
         public abstract ECFieldElement FromBigInteger(BigInteger x);
         public abstract bool IsValidFieldElement(BigInteger x);
+
+        public abstract ECFieldElement RandomFieldElement(SecureRandom r);
+
+        public abstract ECFieldElement RandomFieldElementMult(SecureRandom r);
 
         public virtual Config Configure()
         {
@@ -429,18 +433,17 @@ namespace Org.BouncyCastle.Math.EC
         }
 
         /**
-         * Sets the default <code>ECMultiplier</code>, unless already set. 
+         * Sets the default <code>ECMultiplier</code>, unless already set.
+         *
+         * We avoid locking for performance reasons, so there is no uniqueness guarantee.
          */
         public virtual ECMultiplier GetMultiplier()
         {
-            lock (this)
+            if (this.m_multiplier == null)
             {
-                if (this.m_multiplier == null)
-                {
-                    this.m_multiplier = CreateDefaultMultiplier();
-                }
-                return this.m_multiplier;
+                this.m_multiplier = CreateDefaultMultiplier();
             }
+            return this.m_multiplier;
         }
 
         /**
@@ -521,7 +524,7 @@ namespace Org.BouncyCastle.Math.EC
         }
 
         private class DefaultLookupTable
-            : ECLookupTable
+            : AbstractECLookupTable
         {
             private readonly ECCurve m_outer;
             private readonly byte[] m_table;
@@ -534,12 +537,12 @@ namespace Org.BouncyCastle.Math.EC
                 this.m_size = size;
             }
 
-            public virtual int Size
+            public override int Size
             {
                 get { return m_size; }
             }
 
-            public virtual ECPoint Lookup(int index)
+            public override ECPoint Lookup(int index)
             {
                 int FE_BYTES = (m_outer.FieldSize + 7) / 8;
                 byte[] x = new byte[FE_BYTES], y = new byte[FE_BYTES];
@@ -558,6 +561,26 @@ namespace Org.BouncyCastle.Math.EC
                     pos += (FE_BYTES * 2);
                 }
 
+                return CreatePoint(x, y);
+            }
+
+            public override ECPoint LookupVar(int index)
+            {
+                int FE_BYTES = (m_outer.FieldSize + 7) / 8;
+                byte[] x = new byte[FE_BYTES], y = new byte[FE_BYTES];
+                int pos = index * FE_BYTES * 2;
+
+                for (int j = 0; j < FE_BYTES; ++j)
+                {
+                    x[j] = m_table[pos + j];
+                    y[j] = m_table[pos + FE_BYTES + j];
+                }
+
+                return CreatePoint(x, y);
+            }
+
+            private ECPoint CreatePoint(byte[] x, byte[] y)
+            {
                 ECFieldElement X = m_outer.FromBigInteger(new BigInteger(1, x));
                 ECFieldElement Y = m_outer.FromBigInteger(new BigInteger(1, y));
                 return m_outer.CreateRawPoint(X, Y, false);
@@ -576,6 +599,30 @@ namespace Org.BouncyCastle.Math.EC
         public override bool IsValidFieldElement(BigInteger x)
         {
             return x != null && x.SignValue >= 0 && x.CompareTo(Field.Characteristic) < 0;
+        }
+
+        public override ECFieldElement RandomFieldElement(SecureRandom r)
+        {
+            /*
+             * NOTE: BigInteger comparisons in the rejection sampling are not constant-time, so we
+             * use the product of two independent elements to mitigate side-channels.
+             */
+            BigInteger p = Field.Characteristic;
+            ECFieldElement fe1 = FromBigInteger(ImplRandomFieldElement(r, p));
+            ECFieldElement fe2 = FromBigInteger(ImplRandomFieldElement(r, p));
+            return fe1.Multiply(fe2);
+        }
+
+        public override ECFieldElement RandomFieldElementMult(SecureRandom r)
+        {
+            /*
+             * NOTE: BigInteger comparisons in the rejection sampling are not constant-time, so we
+             * use the product of two independent elements to mitigate side-channels.
+             */
+            BigInteger p = Field.Characteristic;
+            ECFieldElement fe1 = FromBigInteger(ImplRandomFieldElementMult(r, p));
+            ECFieldElement fe2 = FromBigInteger(ImplRandomFieldElementMult(r, p));
+            return fe1.Multiply(fe2);
         }
 
         protected override ECPoint DecompressPoint(int yTilde, BigInteger X1)
@@ -597,6 +644,28 @@ namespace Org.BouncyCastle.Math.EC
             }
 
             return CreateRawPoint(x, y, true);
+        }
+
+        private static BigInteger ImplRandomFieldElement(SecureRandom r, BigInteger p)
+        {
+            BigInteger x;
+            do
+            {
+                x = BigIntegers.CreateRandomBigInteger(p.BitLength, r);
+            }
+            while (x.CompareTo(p) >= 0);
+            return x;
+        }
+
+        private static BigInteger ImplRandomFieldElementMult(SecureRandom r, BigInteger p)
+        {
+            BigInteger x;
+            do
+            {
+                x = BigIntegers.CreateRandomBigInteger(p.BitLength, r);
+            }
+            while (x.SignValue <= 0 || x.CompareTo(p) >= 0);
+            return x;
         }
     }
 
@@ -773,11 +842,6 @@ namespace Org.BouncyCastle.Math.EC
         {
         }
 
-        public override bool IsValidFieldElement(BigInteger x)
-        {
-            return x != null && x.SignValue >= 0 && x.BitLength <= FieldSize;
-        }
-
         [Obsolete("Per-point compression property will be removed")]
         public override ECPoint CreatePoint(BigInteger x, BigInteger y, bool withCompression)
         {
@@ -807,6 +871,29 @@ namespace Org.BouncyCastle.Math.EC
             }
 
             return CreateRawPoint(X, Y, withCompression);
+        }
+
+        public override bool IsValidFieldElement(BigInteger x)
+        {
+            return x != null && x.SignValue >= 0 && x.BitLength <= FieldSize;
+        }
+
+        public override ECFieldElement RandomFieldElement(SecureRandom r)
+        {
+            int m = FieldSize;
+            return FromBigInteger(BigIntegers.CreateRandomBigInteger(m, r));
+        }
+
+        public override ECFieldElement RandomFieldElementMult(SecureRandom r)
+        {
+            /*
+             * NOTE: BigInteger comparisons in the rejection sampling are not constant-time, so we
+             * use the product of two independent elements to mitigate side-channels.
+             */
+            int m = FieldSize;
+            ECFieldElement fe1 = FromBigInteger(ImplRandomFieldElementMult(r, m));
+            ECFieldElement fe2 = FromBigInteger(ImplRandomFieldElementMult(r, m));
+            return fe1.Multiply(fe2);
         }
 
         protected override ECPoint DecompressPoint(int yTilde, BigInteger X1)
@@ -862,12 +949,29 @@ namespace Org.BouncyCastle.Math.EC
          */
         internal ECFieldElement SolveQuadraticEquation(ECFieldElement beta)
         {
+            AbstractF2mFieldElement betaF2m = (AbstractF2mFieldElement)beta;
+
+            bool fastTrace = betaF2m.HasFastTrace;
+            if (fastTrace && 0 != betaF2m.Trace())
+                return null;
+
+            int m = FieldSize;
+
+            // For odd m, use the half-trace 
+            if (0 != (m & 1))
+            {
+                ECFieldElement r = betaF2m.HalfTrace();
+                if (fastTrace || r.Square().Add(r).Add(beta).IsZero)
+                    return r;
+
+                return null;
+            }
+
             if (beta.IsZero)
                 return beta;
 
             ECFieldElement gamma, z, zeroElement = FromBigInteger(BigInteger.Zero);
 
-            int m = FieldSize;
             do
             {
                 ECFieldElement t = FromBigInteger(BigInteger.Arbitrary(m));
@@ -920,6 +1024,17 @@ namespace Org.BouncyCastle.Math.EC
             {
                 return m_order != null && m_cofactor != null && m_b.IsOne && (m_a.IsZero || m_a.IsOne);
             }
+        }
+
+        private static BigInteger ImplRandomFieldElementMult(SecureRandom r, int m)
+        {
+            BigInteger x;
+            do
+            {
+                x = BigIntegers.CreateRandomBigInteger(m, r);
+            }
+            while (x.SignValue <= 0);
+            return x;
         }
     }
 
@@ -1234,7 +1349,7 @@ namespace Org.BouncyCastle.Math.EC
         }
 
         private class DefaultF2mLookupTable
-            : ECLookupTable
+            : AbstractECLookupTable
         {
             private readonly F2mCurve m_outer;
             private readonly long[] m_table;
@@ -1247,16 +1362,13 @@ namespace Org.BouncyCastle.Math.EC
                 this.m_size = size;
             }
 
-            public virtual int Size
+            public override int Size
             {
                 get { return m_size; }
             }
 
-            public virtual ECPoint Lookup(int index)
+            public override ECPoint Lookup(int index)
             {
-                int m = m_outer.m;
-                int[] ks = m_outer.IsTrinomial() ? new int[]{ m_outer.k1 } : new int[]{ m_outer.k1, m_outer.k2, m_outer.k3 }; 
-
                 int FE_LONGS = (m_outer.m + 63) / 64;
                 long[] x = new long[FE_LONGS], y = new long[FE_LONGS];
                 int pos = 0;
@@ -1273,6 +1385,29 @@ namespace Org.BouncyCastle.Math.EC
 
                     pos += (FE_LONGS * 2);
                 }
+
+                return CreatePoint(x, y);
+            }
+
+            public override ECPoint LookupVar(int index)
+            {
+                int FE_LONGS = (m_outer.m + 63) / 64;
+                long[] x = new long[FE_LONGS], y = new long[FE_LONGS];
+                int pos = index * FE_LONGS * 2;
+
+                for (int j = 0; j < FE_LONGS; ++j)
+                {
+                    x[j] = m_table[pos + j];
+                    y[j] = m_table[pos + FE_LONGS + j];
+                }
+
+                return CreatePoint(x, y);
+            }
+
+            private ECPoint CreatePoint(long[] x, long[] y)
+            {
+                int m = m_outer.m;
+                int[] ks = m_outer.IsTrinomial() ? new int[] { m_outer.k1 } : new int[] { m_outer.k1, m_outer.k2, m_outer.k3 }; 
 
                 ECFieldElement X = new F2mFieldElement(m, ks, new LongArray(x));
                 ECFieldElement Y = new F2mFieldElement(m, ks, new LongArray(y));

@@ -12,16 +12,21 @@ namespace Org.BouncyCastle.Math.EC.Rfc8032
 {
     public abstract class Ed448
     {
+        // x^2 + y^2 == 1 - 39081 * x^2 * y^2
+
         public enum Algorithm
         {
             Ed448 = 0,
             Ed448ph = 1,
         }
 
+        private class F : X448Field {};
+
         private const ulong M26UL = 0x03FFFFFFUL;
         private const ulong M28UL = 0x0FFFFFFFUL;
 
-        private const int PointBytes = 57;
+        private const int CoordUints = 14;
+        private const int PointBytes = CoordUints * 4 + 1;
         private const int ScalarUints = 14;
         private const int ScalarBytes = ScalarUints * 4 + 1;
 
@@ -30,13 +35,13 @@ namespace Org.BouncyCastle.Math.EC.Rfc8032
         public static readonly int SecretKeySize = 57;
         public static readonly int SignatureSize = PointBytes + ScalarBytes;
 
-        private static readonly byte[] Dom4Prefix = Strings.ToByteArray("SigEd448");
+        // "SigEd448"
+        private static readonly byte[] Dom4Prefix = new byte[]{ 0x53, 0x69, 0x67, 0x45, 0x64, 0x34, 0x34, 0x38 };
 
         private static readonly uint[] P = { 0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU,
             0xFFFFFFFEU, 0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU };
         private static readonly uint[] L = { 0xAB5844F3U, 0x2378C292U, 0x8DC58F55U, 0x216CC272U, 0xAED63690U, 0xC44EDB49U, 0x7CCA23E9U,
             0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU, 0x3FFFFFFFU };
-        private static readonly BigInteger N = Nat.ToBigInteger(L.Length, L);
 
         private const int L_0 = 0x04A7BB0D;     // L_0:26/24
         private const int L_1 = 0x0873D6D5;     // L_1:27/23
@@ -77,15 +82,15 @@ namespace Org.BouncyCastle.Math.EC.Rfc8032
 
         private class PointExt
         {
-            internal uint[] x = X448Field.Create();
-            internal uint[] y = X448Field.Create();
-            internal uint[] z = X448Field.Create();
+            internal uint[] x = F.Create();
+            internal uint[] y = F.Create();
+            internal uint[] z = F.Create();
         }
 
         private class PointPrecomp
         {
-            internal uint[] x = X448Field.Create();
-            internal uint[] y = X448Field.Create();
+            internal uint[] x = F.Create();
+            internal uint[] y = F.Create();
         }
 
         private static byte[] CalculateS(byte[] r, byte[] k, byte[] s)
@@ -94,7 +99,7 @@ namespace Org.BouncyCastle.Math.EC.Rfc8032
             uint[] u = new uint[ScalarUints];       DecodeScalar(k, 0, u);
             uint[] v = new uint[ScalarUints];       DecodeScalar(s, 0, v);
 
-            Nat.MulAddTo(14, u, v, t);
+            Nat.MulAddTo(ScalarUints, u, v, t);
 
             byte[] result = new byte[ScalarBytes * 2];
             for (int i = 0; i < t.Length; ++i)
@@ -109,24 +114,70 @@ namespace Org.BouncyCastle.Math.EC.Rfc8032
             return ctx != null && ctx.Length < 256;
         }
 
+        private static int CheckPoint(uint[] x, uint[] y)
+        {
+            uint[] t = F.Create();
+            uint[] u = F.Create();
+            uint[] v = F.Create();
+
+            F.Sqr(x, u);
+            F.Sqr(y, v);
+            F.Mul(u, v, t);
+            F.Add(u, v, u);
+            F.Mul(t, -C_d, t);
+            F.SubOne(t);
+            F.Add(t, u, t);
+            F.Normalize(t);
+
+            return F.IsZero(t);
+        }
+
+        private static int CheckPoint(uint[] x, uint[] y, uint[] z)
+        {
+            uint[] t = F.Create();
+            uint[] u = F.Create();
+            uint[] v = F.Create();
+            uint[] w = F.Create();
+
+            F.Sqr(x, u);
+            F.Sqr(y, v);
+            F.Sqr(z, w);
+            F.Mul(u, v, t);
+            F.Add(u, v, u);
+            F.Mul(u, w, u);
+            F.Sqr(w, w);
+            F.Mul(t, -C_d, t);
+            F.Sub(t, w, t);
+            F.Add(t, u, t);
+            F.Normalize(t);
+
+            return F.IsZero(t);
+        }
+
         private static bool CheckPointVar(byte[] p)
         {
             if ((p[PointBytes - 1] & 0x7F) != 0x00)
                 return false;
 
-            uint[] t = new uint[14];
-            Decode32(p, 0, t, 0, 14);
-            return !Nat.Gte(14, t, P);
+            uint[] t = new uint[CoordUints];
+            Decode32(p, 0, t, 0, CoordUints);
+            return !Nat.Gte(CoordUints, t, P);
         }
 
-        private static bool CheckScalarVar(byte[] s)
+        private static bool CheckScalarVar(byte[] s, uint[] n)
         {
             if (s[ScalarBytes - 1] != 0x00)
                 return false;
 
-            uint[] n = new uint[ScalarUints];
             DecodeScalar(s, 0, n);
             return !Nat.Gte(ScalarUints, n, L);
+        }
+
+        private static byte[] Copy(byte[] buf, int off, int len)
+        {
+            byte[] result = new byte[len];
+            Array.Copy(buf, off, result, 0, len);
+            return result;
         }
 
         public static IXof CreatePrehash()
@@ -173,34 +224,34 @@ namespace Org.BouncyCastle.Math.EC.Rfc8032
 
         private static bool DecodePointVar(byte[] p, int pOff, bool negate, PointExt r)
         {
-            byte[] py = Arrays.CopyOfRange(p, pOff, pOff + PointBytes);
+            byte[] py = Copy(p, pOff, PointBytes);
             if (!CheckPointVar(py))
                 return false;
 
             int x_0 = (py[PointBytes - 1] & 0x80) >> 7;
             py[PointBytes - 1] &= 0x7F;
 
-            X448Field.Decode(py, 0, r.y);
+            F.Decode(py, 0, r.y);
 
-            uint[] u = X448Field.Create();
-            uint[] v = X448Field.Create();
+            uint[] u = F.Create();
+            uint[] v = F.Create();
 
-            X448Field.Sqr(r.y, u);
-            X448Field.Mul(u, (uint)-C_d, v);
-            X448Field.Negate(u, u);
-            X448Field.AddOne(u);
-            X448Field.AddOne(v);
+            F.Sqr(r.y, u);
+            F.Mul(u, (uint)-C_d, v);
+            F.Negate(u, u);
+            F.AddOne(u);
+            F.AddOne(v);
 
-            if (!X448Field.SqrtRatioVar(u, v, r.x))
+            if (!F.SqrtRatioVar(u, v, r.x))
                 return false;
 
-            X448Field.Normalize(r.x);
-            if (x_0 == 1 && X448Field.IsZeroVar(r.x))
+            F.Normalize(r.x);
+            if (x_0 == 1 && F.IsZeroVar(r.x))
                 return false;
 
             if (negate ^ (x_0 != (r.x[0] & 1)))
             {
-                X448Field.Negate(r.x, r.x);
+                F.Negate(r.x, r.x);
             }
 
             PointExtendXY(r);
@@ -214,12 +265,16 @@ namespace Org.BouncyCastle.Math.EC.Rfc8032
             Decode32(k, kOff, n, 0, ScalarUints);
         }
 
-        private static void Dom4(IXof d, byte x, byte[] y)
+        private static void Dom4(IXof d, byte phflag, byte[] ctx)
         {
-            d.BlockUpdate(Dom4Prefix, 0, Dom4Prefix.Length);
-            d.Update(x);
-            d.Update((byte)y.Length);
-            d.BlockUpdate(y, 0, y.Length);
+            int n = Dom4Prefix.Length;
+            byte[] t = new byte[n + 2 + ctx.Length];
+            Dom4Prefix.CopyTo(t, 0);
+            t[n] = phflag;
+            t[n + 1] = (byte)ctx.Length;
+            ctx.CopyTo(t, n + 2);
+
+            d.BlockUpdate(t, 0, t.Length);
         }
 
         private static void Encode24(uint n, byte[] bs, int off)
@@ -243,19 +298,23 @@ namespace Org.BouncyCastle.Math.EC.Rfc8032
             Encode24((uint)(n >> 32), bs, off + 4);
         }
 
-        private static void EncodePoint(PointExt p, byte[] r, int rOff)
+        private static int EncodePoint(PointExt p, byte[] r, int rOff)
         {
-            uint[] x = X448Field.Create();
-            uint[] y = X448Field.Create();
+            uint[] x = F.Create();
+            uint[] y = F.Create();
 
-            X448Field.Inv(p.z, y);
-            X448Field.Mul(p.x, y, x);
-            X448Field.Mul(p.y, y, y);
-            X448Field.Normalize(x);
-            X448Field.Normalize(y);
+            F.Inv(p.z, y);
+            F.Mul(p.x, y, x);
+            F.Mul(p.y, y, y);
+            F.Normalize(x);
+            F.Normalize(y);
 
-            X448Field.Encode(y, r, rOff);
+            int result = CheckPoint(x, y);
+
+            F.Encode(y, r, rOff);
             r[rOff + PointBytes - 1] = (byte)((x[0] & 1) << 7);
+
+            return result;
         }
 
         public static void GeneratePrivateKey(SecureRandom random, byte[] k)
@@ -277,9 +336,16 @@ namespace Org.BouncyCastle.Math.EC.Rfc8032
             ScalarMultBaseEncoded(s, pk, pkOff);
         }
 
-        private static sbyte[] GetWnaf(uint[] n, int width)
+        private static uint GetWindow4(uint[] x, int n)
         {
-            Debug.Assert(n[ScalarUints - 1] >> 31 == 0U);
+            int w = (int)((uint)n >> 3), b = (n & 7) << 2;
+            return (x[w] >> b) & 15U;
+        }
+
+        private static sbyte[] GetWnafVar(uint[] n, int width)
+        {
+            Debug.Assert(n[ScalarUints - 1] <= L[ScalarUints - 1]);
+            Debug.Assert(2 <= width && width <= 8);
 
             uint[] t = new uint[ScalarUints * 2];
             {
@@ -293,11 +359,9 @@ namespace Org.BouncyCastle.Math.EC.Rfc8032
                 }
             }
 
-            sbyte[] ws = new sbyte[448];
+            sbyte[] ws = new sbyte[447];
 
-            uint pow2 = 1U << width;
-            uint mask = pow2 - 1U;
-            uint sign = pow2 >> 1;
+            int lead = 32 - width;
 
             uint carry = 0U;
             int j = 0;
@@ -315,12 +379,10 @@ namespace Org.BouncyCastle.Math.EC.Rfc8032
                         continue;
                     }
 
-                    uint digit = (word16 & mask) + carry;
-                    carry = digit & sign;
-                    digit -= (carry << 1);
-                    carry >>= (width - 1);
+                    uint digit = (word16 | 1U) << lead;
+                    carry = digit >> 31;
 
-                    ws[(i << 4) + j] = (sbyte)digit;
+                    ws[(i << 4) + j] = (sbyte)((int)digit >> lead);
 
                     j += width;
                 }
@@ -401,13 +463,14 @@ namespace Org.BouncyCastle.Math.EC.Rfc8032
             if (!CheckContextVar(ctx))
                 throw new ArgumentException("ctx");
 
-            byte[] R = Arrays.CopyOfRange(sig, sigOff, sigOff + PointBytes);
-            byte[] S = Arrays.CopyOfRange(sig, sigOff + PointBytes, sigOff + SignatureSize);
+            byte[] R = Copy(sig, sigOff, PointBytes);
+            byte[] S = Copy(sig, sigOff + PointBytes, ScalarBytes);
 
             if (!CheckPointVar(R))
                 return false;
 
-            if (!CheckScalarVar(S))
+            uint[] nS = new uint[ScalarUints];
+            if (!CheckScalarVar(S, nS))
                 return false;
 
             PointExt pA = new PointExt();
@@ -425,138 +488,183 @@ namespace Org.BouncyCastle.Math.EC.Rfc8032
 
             byte[] k = ReduceScalar(h);
 
-            uint[] nS = new uint[ScalarUints];
-            DecodeScalar(S, 0, nS);
-
             uint[] nA = new uint[ScalarUints];
             DecodeScalar(k, 0, nA);
 
             PointExt pR = new PointExt();
-            ScalarMultStraussVar(nS, nA, pA, pR);
+            ScalarMultStrausVar(nS, nA, pA, pR);
 
             byte[] check = new byte[PointBytes];
-            EncodePoint(pR, check, 0);
+            return 0 != EncodePoint(pR, check, 0) && Arrays.AreEqual(check, R);
+        }
 
-            return Arrays.AreEqual(check, R);
+        private static bool IsNeutralElementVar(uint[] x, uint[] y)
+        {
+            return F.IsZeroVar(x) && F.IsOneVar(y);
+        }
+
+        private static bool IsNeutralElementVar(uint[] x, uint[] y, uint[] z)
+        {
+            return F.IsZeroVar(x) && F.AreEqualVar(y, z);
+        }
+
+        private static void PointAdd(PointExt p, PointExt r)
+        {
+            uint[] a = F.Create();
+            uint[] b = F.Create();
+            uint[] c = F.Create();
+            uint[] d = F.Create();
+            uint[] e = F.Create();
+            uint[] f = F.Create();
+            uint[] g = F.Create();
+            uint[] h = F.Create();
+
+            F.Mul(p.z, r.z, a);
+            F.Sqr(a, b);
+            F.Mul(p.x, r.x, c);
+            F.Mul(p.y, r.y, d);
+            F.Mul(c, d, e);
+            F.Mul(e, -C_d, e);
+            //F.Apm(b, e, f, g);
+            F.Add(b, e, f);
+            F.Sub(b, e, g);
+            F.Add(p.x, p.y, b);
+            F.Add(r.x, r.y, e);
+            F.Mul(b, e, h);
+            //F.Apm(d, c, b, e);
+            F.Add(d, c, b);
+            F.Sub(d, c, e);
+            F.Carry(b);
+            F.Sub(h, b, h);
+            F.Mul(h, a, h);
+            F.Mul(e, a, e);
+            F.Mul(f, h, r.x);
+            F.Mul(e, g, r.y);
+            F.Mul(f, g, r.z);
         }
 
         private static void PointAddVar(bool negate, PointExt p, PointExt r)
         {
-            uint[] A = X448Field.Create();
-            uint[] B = X448Field.Create();
-            uint[] C = X448Field.Create();
-            uint[] D = X448Field.Create();
-            uint[] E = X448Field.Create();
-            uint[] F = X448Field.Create();
-            uint[] G = X448Field.Create();
-            uint[] H = X448Field.Create();
+            uint[] a = F.Create();
+            uint[] b = F.Create();
+            uint[] c = F.Create();
+            uint[] d = F.Create();
+            uint[] e = F.Create();
+            uint[] f = F.Create();
+            uint[] g = F.Create();
+            uint[] h = F.Create();
 
-            uint[] b, e, f, g;
+            uint[] nb, ne, nf, ng;
             if (negate)
             {
-                b = E; e = B; f = G; g = F;
-                X448Field.Sub(p.y, p.x, H);
+                nb = e; ne = b; nf = g; ng = f;
+                F.Sub(p.y, p.x, h);
             }
             else
             {
-                b = B; e = E; f = F; g = G;
-                X448Field.Add(p.y, p.x, H);
+                nb = b; ne = e; nf = f; ng = g;
+                F.Add(p.y, p.x, h);
             }
 
-            X448Field.Mul(p.z, r.z, A);
-            X448Field.Sqr(A, B);
-            X448Field.Mul(p.x, r.x, C);
-            X448Field.Mul(p.y, r.y, D);
-            X448Field.Mul(C, D, E);
-            X448Field.Mul(E, -C_d, E);
-            //X448Field.Apm(B, E, F, G);
-            X448Field.Add(B, E, f);
-            X448Field.Sub(B, E, g);
-            X448Field.Add(r.x, r.y, E);
-            X448Field.Mul(H, E, H);
-            //X448Field.Apm(D, C, B, E);
-            X448Field.Add(D, C, b);
-            X448Field.Sub(D, C, e);
-            X448Field.Carry(b);
-            X448Field.Sub(H, B, H);
-            X448Field.Mul(H, A, H);
-            X448Field.Mul(E, A, E);
-            X448Field.Mul(F, H, r.x);
-            X448Field.Mul(E, G, r.y);
-            X448Field.Mul(F, G, r.z);
+            F.Mul(p.z, r.z, a);
+            F.Sqr(a, b);
+            F.Mul(p.x, r.x, c);
+            F.Mul(p.y, r.y, d);
+            F.Mul(c, d, e);
+            F.Mul(e, -C_d, e);
+            //F.Apm(b, e, nf, ng);
+            F.Add(b, e, nf);
+            F.Sub(b, e, ng);
+            F.Add(r.x, r.y, e);
+            F.Mul(h, e, h);
+            //F.Apm(d, c, nb, ne);
+            F.Add(d, c, nb);
+            F.Sub(d, c, ne);
+            F.Carry(nb);
+            F.Sub(h, b, h);
+            F.Mul(h, a, h);
+            F.Mul(e, a, e);
+            F.Mul(f, h, r.x);
+            F.Mul(e, g, r.y);
+            F.Mul(f, g, r.z);
         }
 
         private static void PointAddPrecomp(PointPrecomp p, PointExt r)
         {
-            uint[] B = X448Field.Create();
-            uint[] C = X448Field.Create();
-            uint[] D = X448Field.Create();
-            uint[] E = X448Field.Create();
-            uint[] F = X448Field.Create();
-            uint[] G = X448Field.Create();
-            uint[] H = X448Field.Create();
+            uint[] b = F.Create();
+            uint[] c = F.Create();
+            uint[] d = F.Create();
+            uint[] e = F.Create();
+            uint[] f = F.Create();
+            uint[] g = F.Create();
+            uint[] h = F.Create();
 
-            X448Field.Sqr(r.z, B);
-            X448Field.Mul(p.x, r.x, C);
-            X448Field.Mul(p.y, r.y, D);
-            X448Field.Mul(C, D, E);
-            X448Field.Mul(E, -C_d, E);
-            //X448Field.Apm(B, E, F, G);
-            X448Field.Add(B, E, F);
-            X448Field.Sub(B, E, G);
-            X448Field.Add(p.x, p.y, B);
-            X448Field.Add(r.x, r.y, E);
-            X448Field.Mul(B, E, H);
-            //X448Field.Apm(D, C, B, E);
-            X448Field.Add(D, C, B);
-            X448Field.Sub(D, C, E);
-            X448Field.Carry(B);
-            X448Field.Sub(H, B, H);
-            X448Field.Mul(H, r.z, H);
-            X448Field.Mul(E, r.z, E);
-            X448Field.Mul(F, H, r.x);
-            X448Field.Mul(E, G, r.y);
-            X448Field.Mul(F, G, r.z);
+            F.Sqr(r.z, b);
+            F.Mul(p.x, r.x, c);
+            F.Mul(p.y, r.y, d);
+            F.Mul(c, d, e);
+            F.Mul(e, -C_d, e);
+            //F.Apm(b, e, f, g);
+            F.Add(b, e, f);
+            F.Sub(b, e, g);
+            F.Add(p.x, p.y, b);
+            F.Add(r.x, r.y, e);
+            F.Mul(b, e, h);
+            //F.Apm(d, c, b, e);
+            F.Add(d, c, b);
+            F.Sub(d, c, e);
+            F.Carry(b);
+            F.Sub(h, b, h);
+            F.Mul(h, r.z, h);
+            F.Mul(e, r.z, e);
+            F.Mul(f, h, r.x);
+            F.Mul(e, g, r.y);
+            F.Mul(f, g, r.z);
         }
 
         private static PointExt PointCopy(PointExt p)
         {
             PointExt r = new PointExt();
-            X448Field.Copy(p.x, 0, r.x, 0);
-            X448Field.Copy(p.y, 0, r.y, 0);
-            X448Field.Copy(p.z, 0, r.z, 0);
+            PointCopy(p, r);
             return r;
+        }
+
+        private static void PointCopy(PointExt p, PointExt r)
+        {
+            F.Copy(p.x, 0, r.x, 0);
+            F.Copy(p.y, 0, r.y, 0);
+            F.Copy(p.z, 0, r.z, 0);
         }
 
         private static void PointDouble(PointExt r)
         {
-            uint[] B = X448Field.Create();
-            uint[] C = X448Field.Create();
-            uint[] D = X448Field.Create();
-            uint[] E = X448Field.Create();
-            uint[] H = X448Field.Create();
-            uint[] J = X448Field.Create();
+            uint[] b = F.Create();
+            uint[] c = F.Create();
+            uint[] d = F.Create();
+            uint[] e = F.Create();
+            uint[] h = F.Create();
+            uint[] j = F.Create();
 
-            X448Field.Add(r.x, r.y, B);
-            X448Field.Sqr(B, B);
-            X448Field.Sqr(r.x, C);
-            X448Field.Sqr(r.y, D);
-            X448Field.Add(C, D, E);
-            X448Field.Carry(E);
-            X448Field.Sqr(r.z, H);
-            X448Field.Add(H, H, H);
-            X448Field.Carry(H);
-            X448Field.Sub(E, H, J);
-            X448Field.Sub(B, E, B);
-            X448Field.Sub(C, D, C);
-            X448Field.Mul(B, J, r.x);
-            X448Field.Mul(E, C, r.y);
-            X448Field.Mul(E, J, r.z);
+            F.Add(r.x, r.y, b);
+            F.Sqr(b, b);
+            F.Sqr(r.x, c);
+            F.Sqr(r.y, d);
+            F.Add(c, d, e);
+            F.Carry(e);
+            F.Sqr(r.z, h);
+            F.Add(h, h, h);
+            F.Carry(h);
+            F.Sub(e, h, j);
+            F.Sub(b, e, b);
+            F.Sub(c, d, c);
+            F.Mul(b, j, r.x);
+            F.Mul(e, c, r.y);
+            F.Mul(e, j, r.z);
         }
 
         private static void PointExtendXY(PointExt p)
         {
-            X448Field.One(p.z);
+            F.One(p.z);
         }
 
         private static void PointLookup(int block, int index, PointPrecomp p)
@@ -564,17 +672,67 @@ namespace Org.BouncyCastle.Math.EC.Rfc8032
             Debug.Assert(0 <= block && block < PrecompBlocks);
             Debug.Assert(0 <= index && index < PrecompPoints);
 
-            int off = block * PrecompPoints * 2 * X448Field.Size;
+            int off = block * PrecompPoints * 2 * F.Size;
 
             for (int i = 0; i < PrecompPoints; ++i)
             {
-                int mask = ((i ^ index) - 1) >> 31;
-                Nat.CMov(X448Field.Size, mask, precompBase, off, p.x, 0);   off += X448Field.Size;
-                Nat.CMov(X448Field.Size, mask, precompBase, off, p.y, 0);   off += X448Field.Size;
+                int cond = ((i ^ index) - 1) >> 31;
+                F.CMov(cond, precompBase, off, p.x, 0);     off += F.Size;
+                F.CMov(cond, precompBase, off, p.y, 0);     off += F.Size;
             }
         }
 
-        private static PointExt[] PointPrecompVar(PointExt p, int count)
+        private static void PointLookup(uint[] x, int n, uint[] table, PointExt r)
+        {
+            // TODO This method is currently hardcoded to 4-bit windows and 8 precomputed points
+
+            uint w = GetWindow4(x, n);
+
+            int sign = (int)(w >> (4 - 1)) ^ 1;
+            int abs = ((int)w ^ -sign) & 7;
+
+            Debug.Assert(sign == 0 || sign == 1);
+            Debug.Assert(0 <= abs && abs < 8);
+
+            for (int i = 0, off = 0; i < 8; ++i)
+            {
+                int cond = ((i ^ abs) - 1) >> 31;
+                F.CMov(cond, table, off, r.x, 0);       off += F.Size;
+                F.CMov(cond, table, off, r.y, 0);       off += F.Size;
+                F.CMov(cond, table, off, r.z, 0);       off += F.Size;
+            }
+
+            F.CNegate(sign, r.x);
+        }
+
+        private static uint[] PointPrecompute(PointExt p, int count)
+        {
+            Debug.Assert(count > 0);
+
+            PointExt q = PointCopy(p);
+            PointExt d = PointCopy(q);
+            PointDouble(d);
+
+            uint[] table = F.CreateTable(count * 3);
+            int off = 0;
+
+            int i = 0;
+            for (;;)
+            {
+                F.Copy(q.x, 0, table, off);     off += F.Size;
+                F.Copy(q.y, 0, table, off);     off += F.Size;
+                F.Copy(q.z, 0, table, off);     off += F.Size;
+
+                if (++i == count)
+                    break;
+
+                PointAdd(d, q);
+            }
+
+            return table;
+        }
+
+        private static PointExt[] PointPrecomputeVar(PointExt p, int count)
         {
             Debug.Assert(count > 0);
 
@@ -593,9 +751,9 @@ namespace Org.BouncyCastle.Math.EC.Rfc8032
 
         private static void PointSetNeutral(PointExt p)
         {
-            X448Field.Zero(p.x);
-            X448Field.One(p.y);
-            X448Field.One(p.z);
+            F.Zero(p.x);
+            F.One(p.y);
+            F.One(p.z);
         }
 
         public static void Precompute()
@@ -606,13 +764,13 @@ namespace Org.BouncyCastle.Math.EC.Rfc8032
                     return;
 
                 PointExt p = new PointExt();
-                X448Field.Copy(B_x, 0, p.x, 0);
-                X448Field.Copy(B_y, 0, p.y, 0);
+                F.Copy(B_x, 0, p.x, 0);
+                F.Copy(B_y, 0, p.y, 0);
                 PointExtendXY(p);
 
-                precompBaseTable = PointPrecompVar(p, 1 << (WnafWidthBase - 2));
+                precompBaseTable = PointPrecomputeVar(p, 1 << (WnafWidthBase - 2));
 
-                precompBase = new uint[PrecompBlocks * PrecompPoints * 2 * X448Field.Size];
+                precompBase = F.CreateTable(PrecompBlocks * PrecompPoints * 2);
 
                 int off = 0;
                 for (int b = 0; b < PrecompBlocks; ++b)
@@ -654,19 +812,53 @@ namespace Org.BouncyCastle.Math.EC.Rfc8032
 
                     Debug.Assert(k == PrecompPoints);
 
+                    uint[] cs = F.CreateTable(PrecompPoints);
+
+                    // TODO[ed448] A single batch inversion across all blocks?
+                    {
+                        uint[] u = F.Create();
+                        F.Copy(points[0].z, 0, u, 0);
+                        F.Copy(u, 0, cs, 0);
+
+                        int i = 0;
+                        while (++i < PrecompPoints)
+                        {
+                            F.Mul(u, points[i].z, u);
+                            F.Copy(u, 0, cs, i * F.Size);
+                        }
+
+                        F.InvVar(u, u);
+                        --i;
+
+                        uint[] t = F.Create();
+
+                        while (i > 0)
+                        {
+                            int j = i--;
+                            F.Copy(cs, i * F.Size, t, 0);
+                            F.Mul(t, u, t);
+                            F.Copy(t, 0, cs, j * F.Size);
+                            F.Mul(u, points[j].z, u);
+                        }
+
+                        F.Copy(u, 0, cs, 0);
+                    }
+
                     for (int i = 0; i < PrecompPoints; ++i)
                     {
                         PointExt q = points[i];
-                        // TODO[ed448] Batch inversion
-                        X448Field.Inv(q.z, q.z);
-                        X448Field.Mul(q.x, q.z, q.x);
-                        X448Field.Mul(q.y, q.z, q.y);
 
-                        //X448Field.Normalize(q.x);
-                        //X448Field.Normalize(q.y);
+                        //F.InvVar(q.z, q.z);
+                        F.Copy(cs, i * F.Size, q.z, 0);
 
-                        X448Field.Copy(q.x, 0, precompBase, off); off += X448Field.Size;
-                        X448Field.Copy(q.y, 0, precompBase, off); off += X448Field.Size;
+                        F.Mul(q.x, q.z, q.x);
+                        F.Mul(q.y, q.z, q.y);
+
+                        //F.Normalize(q.x);
+                        //F.Normalize(q.y);
+
+                        F.Copy(q.x, 0, precompBase, off);   off += F.Size;
+                        F.Copy(q.y, 0, precompBase, off);   off += F.Size;
                     }
                 }
 
@@ -960,11 +1152,47 @@ namespace Org.BouncyCastle.Math.EC.Rfc8032
             return r;
         }
 
+        private static void ScalarMult(byte[] k, PointExt p, PointExt r)
+        {
+            uint[] n = new uint[ScalarUints];
+            DecodeScalar(k, 0, n);
+
+            Debug.Assert(0U == (n[0] & 3));
+            Debug.Assert(1U == n[ScalarUints - 1] >> 31);
+
+            Nat.ShiftDownBits(ScalarUints, n, 2, 0U);
+
+            // Recode the scalar into signed-digit form
+            {
+                uint c1 = Nat.CAdd(ScalarUints, ~(int)n[0] & 1, n, L, n);   Debug.Assert(c1 == 0U);
+                uint c2 = Nat.ShiftDownBit(ScalarUints, n, 1U);             Debug.Assert(c2 == (1U << 31));
+            }
+
+            uint[] table = PointPrecompute(p, 8);
+            PointExt q = new PointExt();
+
+            PointLookup(n, 111, table, r);
+
+            for (int w = 110; w >= 0; --w)
+            {
+                for (int i = 0; i < 4; ++i)
+                {
+                    PointDouble(r);
+                }
+
+                PointLookup(n, w, table, q);
+                PointAdd(q, r);
+            }
+
+            for (int i = 0; i < 2; ++i)
+            {
+                PointDouble(r);
+            }
+        }
+
         private static void ScalarMultBase(byte[] k, PointExt r)
         {
             Precompute();
-
-            PointSetNeutral(r);
 
             uint[] n = new uint[ScalarUints + 1];
             DecodeScalar(k, 0, n);
@@ -977,6 +1205,8 @@ namespace Org.BouncyCastle.Math.EC.Rfc8032
             }
 
             PointPrecomp p = new PointPrecomp();
+
+            PointSetNeutral(r);
 
             int cOff = PrecompSpacing - 1;
             for (;;)
@@ -1002,7 +1232,7 @@ namespace Org.BouncyCastle.Math.EC.Rfc8032
 
                     PointLookup(b, abs, p);
 
-                    X448Field.CNegate(sign, p.x);
+                    F.CNegate(sign, p.x);
 
                     PointAddPrecomp(p, r);
                 }
@@ -1018,7 +1248,8 @@ namespace Org.BouncyCastle.Math.EC.Rfc8032
         {
             PointExt p = new PointExt();
             ScalarMultBase(k, p);
-            EncodePoint(p, r, rOff);
+            if (0 == EncodePoint(p, r, rOff))
+                throw new InvalidOperationException();
         }
 
         internal static void ScalarMultBaseXY(byte[] k, int kOff, uint[] x, uint[] y)
@@ -1028,30 +1259,56 @@ namespace Org.BouncyCastle.Math.EC.Rfc8032
 
             PointExt p = new PointExt();
             ScalarMultBase(n, p);
-            X448Field.Copy(p.x, 0, x, 0);
-            X448Field.Copy(p.y, 0, y, 0);
+
+            if (0 == CheckPoint(p.x, p.y, p.z))
+                throw new InvalidOperationException();
+
+            F.Copy(p.x, 0, x, 0);
+            F.Copy(p.y, 0, y, 0);
         }
 
-        private static void ScalarMultStraussVar(uint[] nb, uint[] np, PointExt p, PointExt r)
+        private static void ScalarMultOrderVar(PointExt p, PointExt r)
+        {
+            int width = 5;
+
+            sbyte[] ws_p = GetWnafVar(L, width);
+
+            PointExt[] tp = PointPrecomputeVar(p, 1 << (width - 2));
+
+            PointSetNeutral(r);
+
+            for (int bit = 446; ;)
+            {
+                int wp = ws_p[bit];
+                if (wp != 0)
+                {
+                    int sign = wp >> 31;
+                    int index = (wp ^ sign) >> 1;
+
+                    PointAddVar((sign != 0), tp[index], r);
+                }
+
+                if (--bit < 0)
+                    break;
+
+                PointDouble(r);
+            }
+        }
+
+        private static void ScalarMultStrausVar(uint[] nb, uint[] np, PointExt p, PointExt r)
         {
             Precompute();
 
             int width = 5;
 
-            sbyte[] ws_b = GetWnaf(nb, WnafWidthBase);
-            sbyte[] ws_p = GetWnaf(np, width);
+            sbyte[] ws_b = GetWnafVar(nb, WnafWidthBase);
+            sbyte[] ws_p = GetWnafVar(np, width);
 
-            PointExt[] tp = PointPrecompVar(p, 1 << (width - 2));
+            PointExt[] tp = PointPrecomputeVar(p, 1 << (width - 2));
 
             PointSetNeutral(r);
 
-            int bit = 447;
-            while (bit > 0 && ((byte)ws_b[bit] | (byte)ws_p[bit]) == 0)
-            {
-                --bit;
-            }
-
-            for (;;)
+            for (int bit = 446;;)
             {
                 int wb = ws_b[bit];
                 if (wb != 0)
@@ -1126,6 +1383,35 @@ namespace Org.BouncyCastle.Math.EC.Rfc8032
             byte phflag = 0x01;
 
             ImplSign(sk, skOff, pk, pkOff, ctx, phflag, m, 0, m.Length, sig, sigOff);
+        }
+
+        public static bool ValidatePublicKeyFull(byte[] pk, int pkOff)
+        {
+            PointExt p = new PointExt();
+            if (!DecodePointVar(pk, pkOff, false, p))
+                return false;
+
+            F.Normalize(p.x);
+            F.Normalize(p.y);
+            F.Normalize(p.z);
+
+            if (IsNeutralElementVar(p.x, p.y, p.z))
+                return false;
+
+            PointExt r = new PointExt();
+            ScalarMultOrderVar(p, r);
+
+            F.Normalize(r.x);
+            F.Normalize(r.y);
+            F.Normalize(r.z);
+
+            return IsNeutralElementVar(r.x, r.y, r.z);
+        }
+
+        public static bool ValidatePublicKeyPartial(byte[] pk, int pkOff)
+        {
+            PointExt p = new PointExt();
+            return DecodePointVar(pk, pkOff, false, p);
         }
 
         public static bool Verify(byte[] sig, int sigOff, byte[] pk, int pkOff, byte[] ctx, byte[] m, int mOff, int mLen)

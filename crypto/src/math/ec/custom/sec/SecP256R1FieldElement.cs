@@ -2,13 +2,15 @@
 
 using Org.BouncyCastle.Math.Raw;
 using Org.BouncyCastle.Utilities;
+using Org.BouncyCastle.Utilities.Encoders;
 
 namespace Org.BouncyCastle.Math.EC.Custom.Sec
 {
     internal class SecP256R1FieldElement
         : AbstractFpFieldElement
     {
-        public static readonly BigInteger Q = SecP256R1Curve.q;
+        public static readonly BigInteger Q = new BigInteger(1,
+            Hex.DecodeStrict("FFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF"));
 
         protected internal readonly uint[] x;
 
@@ -92,7 +94,7 @@ namespace Org.BouncyCastle.Math.EC.Custom.Sec
         {
             //return Multiply(b.Invert());
             uint[] z = Nat256.Create();
-            Mod.Invert(SecP256R1Field.P, ((SecP256R1FieldElement)b).x, z);
+            SecP256R1Field.Inv(((SecP256R1FieldElement)b).x, z);
             SecP256R1Field.Multiply(z, x, z);
             return new SecP256R1FieldElement(z);
         }
@@ -115,7 +117,7 @@ namespace Org.BouncyCastle.Math.EC.Custom.Sec
         {
             //return new SecP256R1FieldElement(ToBigInteger().ModInverse(Q));
             uint[] z = Nat256.Create();
-            Mod.Invert(SecP256R1Field.P, x, z);
+            SecP256R1Field.Inv(x, z);
             return new SecP256R1FieldElement(z);
         }
 

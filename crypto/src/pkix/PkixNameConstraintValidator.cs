@@ -1,15 +1,23 @@
 using System;
 using System.Collections;
+using System.IO;
 
 using Org.BouncyCastle.Asn1;
+using Org.BouncyCastle.Asn1.X500;
+using Org.BouncyCastle.Asn1.X500.Style;
 using Org.BouncyCastle.Asn1.X509;
 using Org.BouncyCastle.Utilities;
 using Org.BouncyCastle.Utilities.Collections;
+using Org.BouncyCastle.Utilities.Encoders;
 
 namespace Org.BouncyCastle.Pkix
 {
     public class PkixNameConstraintValidator
     {
+        // TODO Implement X500Name and styles
+        //private static readonly DerObjectIdentifier SerialNumberOid = Rfc4519Style.SerialNumber;
+        private static readonly DerObjectIdentifier SerialNumberOid = new DerObjectIdentifier("2.5.4.5");
+
         private ISet excludedSubtreesDN = new HashSet();
 
         private ISet excludedSubtreesDNS = new HashSet();
@@ -19,6 +27,8 @@ namespace Org.BouncyCastle.Pkix
         private ISet excludedSubtreesURI = new HashSet();
 
         private ISet excludedSubtreesIP = new HashSet();
+
+        private ISet excludedSubtreesOtherName = new HashSet();
 
         private ISet permittedSubtreesDN;
 
@@ -30,6 +40,8 @@ namespace Org.BouncyCastle.Pkix
 
         private ISet permittedSubtreesIP;
 
+        private ISet permittedSubtreesOtherName;
+
         public PkixNameConstraintValidator()
         {
         }
@@ -38,19 +50,45 @@ namespace Org.BouncyCastle.Pkix
             Asn1Sequence dns,
             Asn1Sequence subtree)
         {
-            if (subtree.Count < 1)
-            {
+            if (subtree.Count < 1 || subtree.Count > dns.Count)
                 return false;
+
+            int start = 0;
+            Rdn subtreeRdnStart = Rdn.GetInstance(subtree[0]);
+            for (int j = 0; j < dns.Count; j++)
+            {
+                start = j;
+                Rdn dnsRdn = Rdn.GetInstance(dns[j]);
+                if (IetfUtilities.RdnAreEqual(subtreeRdnStart, dnsRdn))
+                    break;
             }
 
-            if (subtree.Count > dns.Count)
-            {
+            if (subtree.Count > dns.Count - start)
                 return false;
-            }
 
-            for (int j = subtree.Count - 1; j >= 0; j--)
+            for (int j = 0; j < subtree.Count; ++j)
             {
-                if (!(subtree[j].Equals(dns[j])))
+                // both subtree and dns are a ASN.1 Name and the elements are a RDN
+                Rdn subtreeRdn = Rdn.GetInstance(subtree[j]);
+                Rdn dnsRdn = Rdn.GetInstance(dns[start + j]);
+
+                // check if types and values of all naming attributes are matching, other types which are not restricted are allowed, see https://tools.ietf.org/html/rfc5280#section-7.1
+
+                // Two relative distinguished names
+                //   RDN1 and RDN2 match if they have the same number of naming attributes
+                //   and for each naming attribute in RDN1 there is a matching naming attribute in RDN2.
+                //   NOTE: this is checking the attributes in the same order, which might be not necessary, if this is a problem also IETFUtils.rDNAreEqual mus tbe changed.
+                // use new RFC 5280 comparison, NOTE: this is now different from with RFC 3280, where only binary comparison is used
+                // obey RFC 5280 7.1
+                // special treatment of serialNumber for GSMA SGP.22 RSP specification
+                if (subtreeRdn.Count == 1 && dnsRdn.Count == 1
+                    && subtreeRdn.GetFirst().GetType().Equals(SerialNumberOid)
+                    && dnsRdn.GetFirst().GetType().Equals(SerialNumberOid))
+                {
+                    if (!Platform.StartsWith(dnsRdn.GetFirst().Value.ToString(), subtreeRdn.GetFirst().Value.ToString()))
+                        return false;
+                }
+                else if (!IetfUtilities.RdnAreEqual(subtreeRdn, dnsRdn))
                 {
                     return false;
                 }
@@ -59,97 +97,42 @@ namespace Org.BouncyCastle.Pkix
             return true;
         }
 
-        public void CheckPermittedDN(Asn1Sequence dns)
-        //throws PkixNameConstraintValidatorException
+        public void CheckPermittedDN(Asn1Sequence dn)
         {
-            CheckPermittedDN(permittedSubtreesDN, dns);
+            CheckPermittedDirectory(permittedSubtreesDN, dn);
         }
 
-        public void CheckExcludedDN(Asn1Sequence dns)
-        //throws PkixNameConstraintValidatorException
+        public void CheckExcludedDN(Asn1Sequence dn)
         {
-            CheckExcludedDN(excludedSubtreesDN, dns);
-        }
-
-        private void CheckPermittedDN(ISet permitted, Asn1Sequence dns)
-        //throws PkixNameConstraintValidatorException
-        {
-            if (permitted == null)
-            {
-                return;
-            }
-
-            if ((permitted.Count == 0) && dns.Count == 0)
-            {
-                return;
-            }
-
-            IEnumerator it = permitted.GetEnumerator();
-
-            while (it.MoveNext())
-            {
-                Asn1Sequence subtree = (Asn1Sequence)it.Current;
-
-                if (WithinDNSubtree(dns, subtree))
-                {
-                    return;
-                }
-            }
-
-            throw new PkixNameConstraintValidatorException(
-                "Subject distinguished name is not from a permitted subtree");
-        }
-
-        private void CheckExcludedDN(ISet excluded, Asn1Sequence dns)
-        //throws PkixNameConstraintValidatorException
-        {
-            if (excluded.IsEmpty)
-            {
-                return;
-            }
-
-            IEnumerator it = excluded.GetEnumerator();
-
-            while (it.MoveNext())
-            {
-                Asn1Sequence subtree = (Asn1Sequence)it.Current;
-
-                if (WithinDNSubtree(dns, subtree))
-                {
-                    throw new PkixNameConstraintValidatorException(
-                        "Subject distinguished name is from an excluded subtree");
-                }
-            }
+            CheckExcludedDirectory(excludedSubtreesDN, dn);
         }
 
         private ISet IntersectDN(ISet permitted, ISet dns)
         {
             ISet intersect = new HashSet();
-            for (IEnumerator it = dns.GetEnumerator(); it.MoveNext(); )
+            foreach (GeneralSubtree subtree1 in dns)
             {
-                Asn1Sequence dn = Asn1Sequence.GetInstance(((GeneralSubtree)it
-                    .Current).Base.Name.ToAsn1Object());
+                Asn1Sequence dn1 = Asn1Sequence.GetInstance(subtree1.Base.Name);
                 if (permitted == null)
                 {
-                    if (dn != null)
+                    if (dn1 != null)
                     {
-                        intersect.Add(dn);
+                        intersect.Add(dn1);
                     }
                 }
                 else
                 {
-                    IEnumerator _iter = permitted.GetEnumerator();
-                    while (_iter.MoveNext())
+                    foreach (object obj2 in permitted)
                     {
-                        Asn1Sequence subtree = (Asn1Sequence)_iter.Current;
+                        Asn1Sequence dn2 = Asn1Sequence.GetInstance(obj2);
 
-                        if (WithinDNSubtree(dn, subtree))
+                        if (WithinDNSubtree(dn1, dn2))
                         {
-                            intersect.Add(dn);
+                            intersect.Add(dn1);
                         }
-                        else if (WithinDNSubtree(subtree, dn))
+                        else if (WithinDNSubtree(dn2, dn1))
                         {
-                            intersect.Add(subtree);
+                            intersect.Add(dn2);
                         }
                     }
                 }
@@ -162,48 +145,87 @@ namespace Org.BouncyCastle.Pkix
             if (excluded.IsEmpty)
             {
                 if (dn == null)
-                {
                     return excluded;
-                }
-                excluded.Add(dn);
 
+                excluded.Add(dn);
                 return excluded;
             }
             else
             {
-                ISet intersect = new HashSet();
+                ISet union = new HashSet();
 
-                IEnumerator it = excluded.GetEnumerator();
-                while (it.MoveNext())
+                foreach (object obj in excluded)
                 {
-                    Asn1Sequence subtree = (Asn1Sequence)it.Current;
+                    Asn1Sequence subtree = Asn1Sequence.GetInstance(obj);
 
                     if (WithinDNSubtree(dn, subtree))
                     {
-                        intersect.Add(subtree);
+                        union.Add(subtree);
                     }
                     else if (WithinDNSubtree(subtree, dn))
                     {
-                        intersect.Add(dn);
+                        union.Add(dn);
                     }
                     else
                     {
-                        intersect.Add(subtree);
-                        intersect.Add(dn);
+                        union.Add(subtree);
+                        union.Add(dn);
                     }
                 }
 
-                return intersect;
+                return union;
             }
+        }
+
+        private ISet IntersectOtherName(ISet permitted, ISet otherNames)
+        {
+            ISet intersect = new HashSet();
+            foreach (GeneralSubtree subtree1 in otherNames)
+            {
+                OtherName otherName1 = OtherName.GetInstance(subtree1.Base.Name);
+                if (otherName1 == null)
+                    continue;
+
+                if (permitted == null)
+                {
+                    intersect.Add(otherName1);
+                }
+                else
+                {
+                    foreach (object obj2 in permitted)
+                    {
+                        OtherName otherName2 = OtherName.GetInstance(obj2);
+                        if (otherName2 == null)
+                            continue;
+
+                        IntersectOtherName(otherName1, otherName2, intersect);
+                    }
+                }
+            }
+            return intersect;
+        }
+
+        private void IntersectOtherName(OtherName otherName1, OtherName otherName2, ISet intersect)
+        {
+            if (otherName1.Equals(otherName2))
+            {
+                intersect.Add(otherName1);
+            }
+        }
+
+        private ISet UnionOtherName(ISet permitted, OtherName otherName)
+        {
+            ISet union = permitted != null ? new HashSet(permitted) : new HashSet();
+            union.Add(otherName);
+            return union;
         }
 
         private ISet IntersectEmail(ISet permitted, ISet emails)
         {
             ISet intersect = new HashSet();
-            for (IEnumerator it = emails.GetEnumerator(); it.MoveNext(); )
+            foreach (GeneralSubtree subtree1 in emails)
             {
-                String email = ExtractNameAsString(((GeneralSubtree)it.Current)
-                    .Base);
+                string email = ExtractNameAsString(subtree1.Base);
 
                 if (permitted == null)
                 {
@@ -214,19 +236,16 @@ namespace Org.BouncyCastle.Pkix
                 }
                 else
                 {
-                    IEnumerator it2 = permitted.GetEnumerator();
-                    while (it2.MoveNext())
+                    foreach (string _permitted in permitted)
                     {
-                        String _permitted = (String)it2.Current;
-
-                        intersectEmail(email, _permitted, intersect);
+                        IntersectEmail(email, _permitted, intersect);
                     }
                 }
             }
             return intersect;
         }
 
-        private ISet UnionEmail(ISet excluded, String email)
+        private ISet UnionEmail(ISet excluded, string email)
         {
             if (excluded.IsEmpty)
             {
@@ -240,15 +259,10 @@ namespace Org.BouncyCastle.Pkix
             else
             {
                 ISet union = new HashSet();
-
-                IEnumerator it = excluded.GetEnumerator();
-                while (it.MoveNext())
+                foreach (string _excluded in excluded)
                 {
-                    String _excluded = (String)it.Current;
-
-                    unionEmail(_excluded, email, union);
+                    UnionEmail(_excluded, email, union);
                 }
-
                 return union;
             }
         }
@@ -266,10 +280,9 @@ namespace Org.BouncyCastle.Pkix
         private ISet IntersectIP(ISet permitted, ISet ips)
         {
             ISet intersect = new HashSet();
-            for (IEnumerator it = ips.GetEnumerator(); it.MoveNext(); )
+            foreach (GeneralSubtree subtree in ips)
             {
-                byte[] ip = Asn1OctetString.GetInstance(
-                    ((GeneralSubtree)it.Current).Base.Name).GetOctets();
+                byte[] ip = Asn1OctetString.GetInstance(subtree.Base.Name).GetOctets();
                 if (permitted == null)
                 {
                     if (ip != null)
@@ -279,10 +292,8 @@ namespace Org.BouncyCastle.Pkix
                 }
                 else
                 {
-                    IEnumerator it2 = permitted.GetEnumerator();
-                    while (it2.MoveNext())
+                    foreach (byte[] _permitted in permitted)
                     {
-                        byte[] _permitted = (byte[])it2.Current;
                         intersect.AddAll(IntersectIPRange(_permitted, ip));
                     }
                 }
@@ -315,14 +326,10 @@ namespace Org.BouncyCastle.Pkix
             else
             {
                 ISet union = new HashSet();
-
-                IEnumerator it = excluded.GetEnumerator();
-                while (it.MoveNext())
+                foreach (byte[] _excluded in excluded)
                 {
-                    byte[] _excluded = (byte[])it.Current;
                     union.AddAll(UnionIPRange(_excluded, ip));
                 }
-
                 return union;
             }
         }
@@ -337,9 +344,8 @@ namespace Org.BouncyCastle.Pkix
         private ISet UnionIPRange(byte[] ipWithSubmask1, byte[] ipWithSubmask2)
         {
             ISet set = new HashSet();
-
             // difficult, adding always all IPs is not wrong
-            if (Org.BouncyCastle.Utilities.Arrays.AreEqual(ipWithSubmask1, ipWithSubmask2))
+            if (Arrays.AreEqual(ipWithSubmask1, ipWithSubmask2))
             {
                 set.Add(ipWithSubmask1);
             }
@@ -360,41 +366,41 @@ namespace Org.BouncyCastle.Pkix
          *         mask as a byte array or an empty <code>Set</code>.
          */
         private ISet IntersectIPRange(byte[] ipWithSubmask1, byte[] ipWithSubmask2)
-    {
-        if (ipWithSubmask1.Length != ipWithSubmask2.Length)
         {
-            //Collections.EMPTY_SET;
-            return new HashSet();
-        }
+            if (ipWithSubmask1.Length != ipWithSubmask2.Length)
+            {
+                //Collections.EMPTY_SET;
+                return new HashSet();
+            }
 
-        byte[][] temp = ExtractIPsAndSubnetMasks(ipWithSubmask1, ipWithSubmask2);
-        byte[] ip1 = temp[0];
-        byte[] subnetmask1 = temp[1];
-        byte[] ip2 = temp[2];
-        byte[] subnetmask2 = temp[3];
+            byte[][] temp = ExtractIPsAndSubnetMasks(ipWithSubmask1, ipWithSubmask2);
+            byte[] ip1 = temp[0];
+            byte[] subnetmask1 = temp[1];
+            byte[] ip2 = temp[2];
+            byte[] subnetmask2 = temp[3];
 
-        byte[][] minMax = MinMaxIPs(ip1, subnetmask1, ip2, subnetmask2);
-        byte[] min;
-        byte[] max;
-        max = Min(minMax[1], minMax[3]);
-        min = Max(minMax[0], minMax[2]);
+            byte[][] minMax = MinMaxIPs(ip1, subnetmask1, ip2, subnetmask2);
+            byte[] min;
+            byte[] max;
+            max = Min(minMax[1], minMax[3]);
+            min = Max(minMax[0], minMax[2]);
 
-        // minimum IP address must be bigger than max
-        if (CompareTo(min, max) == 1)
-        {
-            //return Collections.EMPTY_SET;
-            return new HashSet();
-        }
-        // OR keeps all significant bits
-        byte[] ip = Or(minMax[0], minMax[2]);
-        byte[] subnetmask = Or(subnetmask1, subnetmask2);
+            // minimum IP address must be bigger than max
+            if (CompareTo(min, max) == 1)
+            {
+                //return Collections.EMPTY_SET;
+                return new HashSet();
+            }
+            // OR keeps all significant bits
+            byte[] ip = Or(minMax[0], minMax[2]);
+            byte[] subnetmask = Or(subnetmask1, subnetmask2);
 
-            //return new HashSet( ICollectionsingleton(IpWithSubnetMask(ip, subnetmask));
-        ISet hs = new HashSet();
-        hs.Add(IpWithSubnetMask(ip, subnetmask));
+                //return new HashSet( ICollectionsingleton(IpWithSubnetMask(ip, subnetmask));
+            ISet hs = new HashSet();
+            hs.Add(IpWithSubnetMask(ip, subnetmask));
 
             return hs;
-    }
+        }
 
         /**
          * Concatenates the IP address with its subnet mask.
@@ -423,20 +429,19 @@ namespace Org.BouncyCastle.Pkix
         private byte[][] ExtractIPsAndSubnetMasks(
             byte[] ipWithSubmask1,
             byte[] ipWithSubmask2)
-    {
-        int ipLength = ipWithSubmask1.Length / 2;
-        byte[] ip1 = new byte[ipLength];
-        byte[] subnetmask1 = new byte[ipLength];
-        Array.Copy(ipWithSubmask1, 0, ip1, 0, ipLength);
-        Array.Copy(ipWithSubmask1, ipLength, subnetmask1, 0, ipLength);
+        {
+            int ipLength = ipWithSubmask1.Length / 2;
+            byte[] ip1 = new byte[ipLength];
+            byte[] subnetmask1 = new byte[ipLength];
+            Array.Copy(ipWithSubmask1, 0, ip1, 0, ipLength);
+            Array.Copy(ipWithSubmask1, ipLength, subnetmask1, 0, ipLength);
 
-        byte[] ip2 = new byte[ipLength];
-        byte[] subnetmask2 = new byte[ipLength];
-        Array.Copy(ipWithSubmask2, 0, ip2, 0, ipLength);
-        Array.Copy(ipWithSubmask2, ipLength, subnetmask2, 0, ipLength);
-        return new byte[][]
-            {ip1, subnetmask1, ip2, subnetmask2};
-    }
+            byte[] ip2 = new byte[ipLength];
+            byte[] subnetmask2 = new byte[ipLength];
+            Array.Copy(ipWithSubmask2, 0, ip2, 0, ipLength);
+            Array.Copy(ipWithSubmask2, ipLength, subnetmask2, 0, ipLength);
+            return new byte[][]{ ip1, subnetmask1, ip2, subnetmask2 };
+        }
 
         /**
          * Based on the two IP addresses and their subnet masks the IP range is
@@ -473,168 +478,48 @@ namespace Org.BouncyCastle.Pkix
                 max2[i] = (byte)(ip2[i] & subnetmask2[i] | ~subnetmask2[i]);
             }
 
-            return new byte[][] { min1, max1, min2, max2 };
+            return new byte[][]{ min1, max1, min2, max2 };
         }
 
-        private void CheckPermittedEmail(ISet permitted, String email)
-        //throws PkixNameConstraintValidatorException
+        private bool IsOtherNameConstrained(OtherName constraint, OtherName otherName)
         {
-            if (permitted == null)
-            {
-                return;
-            }
-
-            IEnumerator it = permitted.GetEnumerator();
-
-            while (it.MoveNext())
-            {
-                String str = ((String)it.Current);
-
-                if (EmailIsConstrained(email, str))
-                {
-                    return;
-                }
-            }
-
-            if (email.Length == 0 && permitted.Count == 0)
-            {
-                return;
-            }
-
-            throw new PkixNameConstraintValidatorException(
-                "Subject email address is not from a permitted subtree.");
+            return constraint.Equals(otherName);
         }
 
-        private void CheckExcludedEmail(ISet excluded, String email)
-        //throws PkixNameConstraintValidatorException
+        private bool IsOtherNameConstrained(ISet constraints, OtherName otherName)
         {
-            if (excluded.IsEmpty)
+            foreach (object obj in constraints)
             {
-                return;
+                OtherName constraint = OtherName.GetInstance(obj);
+
+                if (IsOtherNameConstrained(constraint, otherName))
+                    return true;
             }
 
-            IEnumerator it = excluded.GetEnumerator();
+            return false;
+        }
 
-            while (it.MoveNext())
+        private void CheckPermittedOtherName(ISet permitted, OtherName name)
+        {
+            if (permitted != null && !IsOtherNameConstrained(permitted, name))
             {
-                String str = (String)it.Current;
-
-                if (EmailIsConstrained(email, str))
-                {
-                    throw new PkixNameConstraintValidatorException(
-                        "Email address is from an excluded subtree.");
-                }
+                throw new PkixNameConstraintValidatorException(
+                    "Subject OtherName is not from a permitted subtree.");
             }
         }
 
-        /**
-         * Checks if the IP <code>ip</code> is included in the permitted ISet
-         * <code>permitted</code>.
-         *
-         * @param permitted A <code>Set</code> of permitted IP addresses with
-         *                  their subnet mask as byte arrays.
-         * @param ip        The IP address.
-         * @throws PkixNameConstraintValidatorException
-         *          if the IP is not permitted.
-         */
-        private void CheckPermittedIP(ISet permitted, byte[] ip)
-        //throws PkixNameConstraintValidatorException
+        private void CheckExcludedOtherName(ISet excluded, OtherName name)
         {
-            if (permitted == null)
+            if (IsOtherNameConstrained(excluded, name))
             {
-                return;
-            }
-
-            IEnumerator it = permitted.GetEnumerator();
-
-            while (it.MoveNext())
-            {
-                byte[] ipWithSubnet = (byte[])it.Current;
-
-                if (IsIPConstrained(ip, ipWithSubnet))
-                {
-                    return;
-                }
-            }
-            if (ip.Length == 0 && permitted.Count == 0)
-            {
-                return;
-            }
-            throw new PkixNameConstraintValidatorException(
-                "IP is not from a permitted subtree.");
-        }
-
-        /**
-         * Checks if the IP <code>ip</code> is included in the excluded ISet
-         * <code>excluded</code>.
-         *
-         * @param excluded A <code>Set</code> of excluded IP addresses with their
-         *                 subnet mask as byte arrays.
-         * @param ip       The IP address.
-         * @throws PkixNameConstraintValidatorException
-         *          if the IP is excluded.
-         */
-        private void checkExcludedIP(ISet excluded, byte[] ip)
-        //throws PkixNameConstraintValidatorException
-        {
-            if (excluded.IsEmpty)
-            {
-                return;
-            }
-
-            IEnumerator it = excluded.GetEnumerator();
-
-            while (it.MoveNext())
-            {
-                byte[] ipWithSubnet = (byte[])it.Current;
-
-                if (IsIPConstrained(ip, ipWithSubnet))
-                {
-                    throw new PkixNameConstraintValidatorException(
-                        "IP is from an excluded subtree.");
-                }
+                throw new PkixNameConstraintValidatorException(
+                    "OtherName is from an excluded subtree.");
             }
         }
 
-        /**
-         * Checks if the IP address <code>ip</code> is constrained by
-         * <code>constraint</code>.
-         *
-         * @param ip         The IP address.
-         * @param constraint The constraint. This is an IP address concatenated with
-         *                   its subnetmask.
-         * @return <code>true</code> if constrained, <code>false</code>
-         *         otherwise.
-         */
-        private bool IsIPConstrained(byte[] ip, byte[] constraint)
+        private bool IsEmailConstrained(string constraint, string email)
         {
-            int ipLength = ip.Length;
-
-            if (ipLength != (constraint.Length / 2))
-            {
-                return false;
-            }
-
-            byte[] subnetMask = new byte[ipLength];
-            Array.Copy(constraint, ipLength, subnetMask, 0, ipLength);
-
-            byte[] permittedSubnetAddress = new byte[ipLength];
-
-            byte[] ipSubnetAddress = new byte[ipLength];
-
-            // the resulting IP address by applying the subnet mask
-            for (int i = 0; i < ipLength; i++)
-            {
-                permittedSubnetAddress[i] = (byte)(constraint[i] & subnetMask[i]);
-                ipSubnetAddress[i] = (byte)(ip[i] & subnetMask[i]);
-            }
-
-            return Org.BouncyCastle.Utilities.Arrays.AreEqual(permittedSubnetAddress, ipSubnetAddress);
-        }
-
-        private bool EmailIsConstrained(String email, String constraint)
-        {
-            String sub = email.Substring(email.IndexOf('@') + 1);
+            string sub = email.Substring(email.IndexOf('@') + 1);
             // a particular mailbox
             if (constraint.IndexOf('@') != -1)
             {
@@ -659,28 +544,258 @@ namespace Org.BouncyCastle.Pkix
             return false;
         }
 
-        private bool WithinDomain(String testDomain, String domain)
+        private bool IsEmailConstrained(ISet constraints, string email)
         {
-            String tempDomain = domain;
+            foreach (string constraint in constraints)
+            {
+                if (IsEmailConstrained(constraint, email))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private void CheckPermittedEmail(ISet permitted, string email)
+        {
+            if (permitted != null
+                && !(email.Length == 0 && permitted.IsEmpty)
+                && !IsEmailConstrained(permitted, email))
+            {
+                throw new PkixNameConstraintValidatorException(
+                    "Subject email address is not from a permitted subtree.");
+            }
+        }
+
+        private void CheckExcludedEmail(ISet excluded, string email)
+        {
+            if (IsEmailConstrained(excluded, email))
+            {
+                throw new PkixNameConstraintValidatorException(
+                    "Email address is from an excluded subtree.");
+            }
+        }
+
+        private bool IsDnsConstrained(string constraint, string dns)
+        {
+            return WithinDomain(dns, constraint) || Platform.EqualsIgnoreCase(dns, constraint);
+        }
+
+        private bool IsDnsConstrained(ISet constraints, string dns)
+        {
+            foreach (string constraint in constraints)
+            {
+                if (IsDnsConstrained(constraint, dns))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private void CheckPermittedDns(ISet permitted, string dns)
+        {
+            if (permitted != null
+                && !(dns.Length == 0 && permitted.IsEmpty)
+                && !IsDnsConstrained(permitted, dns))
+            {
+                throw new PkixNameConstraintValidatorException(
+                    "DNS is not from a permitted subtree.");
+            }
+        }
+
+        private void CheckExcludedDns(ISet excluded, string dns)
+        {
+            if (IsDnsConstrained(excluded, dns))
+            {
+                throw new PkixNameConstraintValidatorException(
+                    "DNS is from an excluded subtree.");
+            }
+        }
+
+        private bool IsDirectoryConstrained(ISet constraints, Asn1Sequence directory)
+        {
+            foreach (object obj in constraints)
+            {
+                Asn1Sequence constraint = Asn1Sequence.GetInstance(obj);
+
+                if (WithinDNSubtree(directory, constraint))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private void CheckPermittedDirectory(ISet permitted, Asn1Sequence directory)
+        {
+            if (permitted != null
+                && !(directory.Count == 0 && permitted.IsEmpty)
+                && !IsDirectoryConstrained(permitted, directory))
+            {
+                throw new PkixNameConstraintValidatorException(
+                    "Subject distinguished name is not from a permitted subtree");
+            }
+        }
+
+        private void CheckExcludedDirectory(ISet excluded, Asn1Sequence directory)
+        {
+            if (IsDirectoryConstrained(excluded, directory))
+            {
+                throw new PkixNameConstraintValidatorException(
+                    "Subject distinguished name is from an excluded subtree");
+            }
+        }
+
+        private bool IsUriConstrained(string constraint, string uri)
+        {
+            string host = ExtractHostFromURL(uri);
+
+            if (Platform.StartsWith(constraint, "."))
+            {
+                // in sub domain or domain
+                return WithinDomain(host, constraint);
+            }
+
+            // a host
+            return Platform.EqualsIgnoreCase(host, constraint);
+        }
+
+        private bool IsUriConstrained(ISet constraints, string uri)
+        {
+            foreach (string constraint in constraints)
+            {
+                if (IsUriConstrained(constraint, uri))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private void CheckPermittedUri(ISet permitted, string uri)
+        {
+            if (permitted != null
+                && !(uri.Length == 0 && permitted.IsEmpty)
+                && !IsUriConstrained(permitted, uri))
+            {
+                throw new PkixNameConstraintValidatorException(
+                    "URI is not from a permitted subtree.");
+            }
+        }
+
+        private void CheckExcludedUri(ISet excluded, string uri)
+        {
+            if (IsUriConstrained(excluded, uri))
+            {
+                throw new PkixNameConstraintValidatorException(
+                    "URI is from an excluded subtree.");
+            }
+        }
+
+        /**
+         * Checks if the IP address <code>ip</code> is constrained by
+         * <code>constraint</code>.
+         *
+         * @param constraint The constraint. This is an IP address concatenated with
+         *                   its subnetmask.
+         * @param ip         The IP address.
+         * @return <code>true</code> if constrained, <code>false</code>
+         *         otherwise.
+         */
+        private bool IsIPConstrained(byte[] constraint, byte[] ip)
+        {
+            int ipLength = ip.Length;
+            if (ipLength != (constraint.Length / 2))
+            {
+                return false;
+            }
+
+            byte[] subnetMask = new byte[ipLength];
+            Array.Copy(constraint, ipLength, subnetMask, 0, ipLength);
+
+            byte[] permittedSubnetAddress = new byte[ipLength];
+
+            byte[] ipSubnetAddress = new byte[ipLength];
+
+            // the resulting IP address by applying the subnet mask
+            for (int i = 0; i < ipLength; i++)
+            {
+                permittedSubnetAddress[i] = (byte)(constraint[i] & subnetMask[i]);
+                ipSubnetAddress[i] = (byte)(ip[i] & subnetMask[i]);
+            }
+
+            return Arrays.AreEqual(permittedSubnetAddress, ipSubnetAddress);
+        }
+
+        private bool IsIPConstrained(ISet constraints, byte[] ip)
+        {
+            foreach (byte[] constraint in constraints)
+            {
+                if (IsIPConstrained(constraint, ip))
+                    return true;
+            }
+
+            return false;
+        }
+
+        /**
+         * Checks if the IP <code>ip</code> is included in the permitted ISet
+         * <code>permitted</code>.
+         *
+         * @param permitted A <code>Set</code> of permitted IP addresses with
+         *                  their subnet mask as byte arrays.
+         * @param ip        The IP address.
+         * @throws PkixNameConstraintValidatorException
+         *          if the IP is not permitted.
+         */
+        private void CheckPermittedIP(ISet permitted, byte[] ip)
+        {
+            if (permitted != null
+                && !(ip.Length == 0 && permitted.IsEmpty)
+                && !IsIPConstrained(permitted, ip))
+            {
+                throw new PkixNameConstraintValidatorException(
+                    "IP is not from a permitted subtree.");
+            }
+        }
+
+        /**
+         * Checks if the IP <code>ip</code> is included in the excluded ISet
+         * <code>excluded</code>.
+         *
+         * @param excluded A <code>Set</code> of excluded IP addresses with their
+         *                 subnet mask as byte arrays.
+         * @param ip       The IP address.
+         * @throws PkixNameConstraintValidatorException
+         *          if the IP is excluded.
+         */
+        private void CheckExcludedIP(ISet excluded, byte[] ip)
+        {
+            if (IsIPConstrained(excluded, ip))
+            {
+                throw new PkixNameConstraintValidatorException(
+                    "IP is from an excluded subtree.");
+            }
+        }
+
+        private bool WithinDomain(string testDomain, string domain)
+        {
+            string tempDomain = domain;
             if (Platform.StartsWith(tempDomain, "."))
             {
                 tempDomain = tempDomain.Substring(1);
             }
-            String[] domainParts = tempDomain.Split('.'); // Strings.split(tempDomain, '.');
-            String[] testDomainParts = testDomain.Split('.'); // Strings.split(testDomain, '.');
+
+            string[] domainParts = tempDomain.Split('.'); // Strings.split(tempDomain, '.');
+            string[] testDomainParts = testDomain.Split('.'); // Strings.split(testDomain, '.');
 
             // must have at least one subdomain
             if (testDomainParts.Length <= domainParts.Length)
-            {
                 return false;
-            }
 
             int d = testDomainParts.Length - domainParts.Length;
             for (int i = -1; i < domainParts.Length; i++)
             {
                 if (i == -1)
                 {
-                    if (testDomainParts[i + d].Equals(""))
+                    if (testDomainParts[i + d].Length < 1)
                     {
                         return false;
                     }
@@ -693,58 +808,6 @@ namespace Org.BouncyCastle.Pkix
             return true;
         }
 
-        private void CheckPermittedDNS(ISet permitted, String dns)
-        //throws PkixNameConstraintValidatorException
-        {
-            if (permitted == null)
-            {
-                return;
-            }
-
-            IEnumerator it = permitted.GetEnumerator();
-
-            while (it.MoveNext())
-            {
-                String str = ((String)it.Current);
-
-                // is sub domain
-                if (WithinDomain(dns, str)
-                    || Platform.ToUpperInvariant(dns).Equals(Platform.ToUpperInvariant(str)))
-                {
-                    return;
-                }
-            }
-            if (dns.Length == 0 && permitted.Count == 0)
-            {
-                return;
-            }
-            throw new PkixNameConstraintValidatorException(
-                "DNS is not from a permitted subtree.");
-        }
-
-        private void checkExcludedDNS(ISet excluded, String dns)
-        //     throws PkixNameConstraintValidatorException
-        {
-            if (excluded.IsEmpty)
-            {
-                return;
-            }
-
-            IEnumerator it = excluded.GetEnumerator();
-
-            while (it.MoveNext())
-            {
-                String str = ((String)it.Current);
-
-                // is sub domain or the same
-				if (WithinDomain(dns, str) || Platform.EqualsIgnoreCase(dns, str))
-                {
-                    throw new PkixNameConstraintValidatorException(
-                        "DNS is from an excluded subtree.");
-                }
-            }
-        }
-
         /**
          * The common part of <code>email1</code> and <code>email2</code> is
          * added to the union <code>union</code>. If <code>email1</code> and
@@ -754,12 +817,12 @@ namespace Org.BouncyCastle.Pkix
          * @param email2 Email address constraint 2.
          * @param union  The union.
          */
-        private void unionEmail(String email1, String email2, ISet union)
+        private void UnionEmail(string email1, string email2, ISet union)
         {
             // email1 is a particular address
             if (email1.IndexOf('@') != -1)
             {
-                String _sub = email1.Substring(email1.IndexOf('@') + 1);
+                string _sub = email1.Substring(email1.IndexOf('@') + 1);
                 // both are a particular mailbox
                 if (email2.IndexOf('@') != -1)
                 {
@@ -805,7 +868,7 @@ namespace Org.BouncyCastle.Pkix
             {
                 if (email2.IndexOf('@') != -1)
                 {
-                    String _sub = email2.Substring(email1.IndexOf('@') + 1);
+                    string _sub = email2.Substring(email1.IndexOf('@') + 1);
                     if (WithinDomain(_sub, email1))
                     {
                         union.Add(email1);
@@ -851,7 +914,7 @@ namespace Org.BouncyCastle.Pkix
             {
                 if (email2.IndexOf('@') != -1)
                 {
-                    String _sub = email2.Substring(email1.IndexOf('@') + 1);
+                    string _sub = email2.Substring(email1.IndexOf('@') + 1);
                     if (Platform.EqualsIgnoreCase(_sub, email1))
                     {
                         union.Add(email1);
@@ -891,12 +954,12 @@ namespace Org.BouncyCastle.Pkix
             }
         }
 
-        private void unionURI(String email1, String email2, ISet union)
+        private void unionURI(string email1, string email2, ISet union)
         {
             // email1 is a particular address
             if (email1.IndexOf('@') != -1)
             {
-                String _sub = email1.Substring(email1.IndexOf('@') + 1);
+                string _sub = email1.Substring(email1.IndexOf('@') + 1);
                 // both are a particular mailbox
                 if (email2.IndexOf('@') != -1)
                 {
@@ -943,7 +1006,7 @@ namespace Org.BouncyCastle.Pkix
             {
                 if (email2.IndexOf('@') != -1)
                 {
-                    String _sub = email2.Substring(email1.IndexOf('@') + 1);
+                    string _sub = email2.Substring(email1.IndexOf('@') + 1);
                     if (WithinDomain(_sub, email1))
                     {
                         union.Add(email1);
@@ -989,7 +1052,7 @@ namespace Org.BouncyCastle.Pkix
             {
                 if (email2.IndexOf('@') != -1)
                 {
-                    String _sub = email2.Substring(email1.IndexOf('@') + 1);
+                    string _sub = email2.Substring(email1.IndexOf('@') + 1);
                     if (Platform.EqualsIgnoreCase(_sub, email1))
                     {
                         union.Add(email1);
@@ -1029,13 +1092,12 @@ namespace Org.BouncyCastle.Pkix
             }
         }
 
-        private ISet intersectDNS(ISet permitted, ISet dnss)
+        private ISet IntersectDns(ISet permitted, ISet dnss)
         {
             ISet intersect = new HashSet();
-            for (IEnumerator it = dnss.GetEnumerator(); it.MoveNext(); )
+            foreach (GeneralSubtree subtree in dnss)
             {
-                String dns = ExtractNameAsString(((GeneralSubtree)it.Current)
-                    .Base);
+                string dns = ExtractNameAsString(subtree.Base);
                 if (permitted == null)
                 {
                     if (dns != null)
@@ -1045,11 +1107,8 @@ namespace Org.BouncyCastle.Pkix
                 }
                 else
                 {
-                    IEnumerator _iter = permitted.GetEnumerator();
-                    while (_iter.MoveNext())
+                    foreach (string _permitted in permitted)
                     {
-                        String _permitted = (String)_iter.Current;
-
                         if (WithinDomain(_permitted, dns))
                         {
                             intersect.Add(_permitted);
@@ -1065,42 +1124,35 @@ namespace Org.BouncyCastle.Pkix
             return intersect;
         }
 
-        protected ISet unionDNS(ISet excluded, String dns)
+        private ISet UnionDns(ISet excluded, string dns)
         {
             if (excluded.IsEmpty)
             {
                 if (dns == null)
-                {
                     return excluded;
-                }
-                excluded.Add(dns);
 
+                excluded.Add(dns);
                 return excluded;
             }
             else
             {
                 ISet union = new HashSet();
-
-                IEnumerator _iter = excluded.GetEnumerator();
-                while (_iter.MoveNext())
+                foreach (string _excluded in excluded)
                 {
-                    String _permitted = (String)_iter.Current;
-
-                    if (WithinDomain(_permitted, dns))
+                    if (WithinDomain(_excluded, dns))
                     {
                         union.Add(dns);
                     }
-                    else if (WithinDomain(dns, _permitted))
+                    else if (WithinDomain(dns, _excluded))
                     {
-                        union.Add(_permitted);
+                        union.Add(_excluded);
                     }
                     else
                     {
-                        union.Add(_permitted);
+                        union.Add(_excluded);
                         union.Add(dns);
                     }
                 }
-
                 return union;
             }
         }
@@ -1113,12 +1165,12 @@ namespace Org.BouncyCastle.Pkix
          * @param email2    Email address constraint 2.
          * @param intersect The intersection.
          */
-        private void intersectEmail(String email1, String email2, ISet intersect)
+        private void IntersectEmail(string email1, string email2, ISet intersect)
         {
             // email1 is a particular address
             if (email1.IndexOf('@') != -1)
             {
-                String _sub = email1.Substring(email1.IndexOf('@') + 1);
+                string _sub = email1.Substring(email1.IndexOf('@') + 1);
                 // both are a particular mailbox
                 if (email2.IndexOf('@') != -1)
                 {
@@ -1149,7 +1201,7 @@ namespace Org.BouncyCastle.Pkix
             {
                 if (email2.IndexOf('@') != -1)
                 {
-                    String _sub = email2.Substring(email1.IndexOf('@') + 1);
+                    string _sub = email2.Substring(email1.IndexOf('@') + 1);
                     if (WithinDomain(_sub, email1))
                     {
                         intersect.Add(email2);
@@ -1180,7 +1232,7 @@ namespace Org.BouncyCastle.Pkix
             {
                 if (email2.IndexOf('@') != -1)
                 {
-                    String _sub = email2.Substring(email2.IndexOf('@') + 1);
+                    string _sub = email2.Substring(email2.IndexOf('@') + 1);
                     if (Platform.EqualsIgnoreCase(_sub, email1))
                     {
                         intersect.Add(email2);
@@ -1205,35 +1257,12 @@ namespace Org.BouncyCastle.Pkix
             }
         }
 
-        private void checkExcludedURI(ISet excluded, String uri)
-        //       throws PkixNameConstraintValidatorException
-        {
-            if (excluded.IsEmpty)
-            {
-                return;
-            }
-
-            IEnumerator it = excluded.GetEnumerator();
-
-            while (it.MoveNext())
-            {
-                String str = ((String)it.Current);
-
-                if (IsUriConstrained(uri, str))
-                {
-                    throw new PkixNameConstraintValidatorException(
-                        "URI is from an excluded subtree.");
-                }
-            }
-        }
-
-        private ISet intersectURI(ISet permitted, ISet uris)
+        private ISet IntersectUri(ISet permitted, ISet uris)
         {
             ISet intersect = new HashSet();
-            for (IEnumerator it = uris.GetEnumerator(); it.MoveNext(); )
+            foreach (GeneralSubtree subtree in uris)
             {
-                String uri = ExtractNameAsString(((GeneralSubtree)it.Current)
-                    .Base);
+                string uri = ExtractNameAsString(subtree.Base);
                 if (permitted == null)
                 {
                     if (uri != null)
@@ -1243,51 +1272,42 @@ namespace Org.BouncyCastle.Pkix
                 }
                 else
                 {
-                    IEnumerator _iter = permitted.GetEnumerator();
-                    while (_iter.MoveNext())
+                    foreach (string _permitted in permitted)
                     {
-                        String _permitted = (String)_iter.Current;
-                        intersectURI(_permitted, uri, intersect);
+                        IntersectUri(_permitted, uri, intersect);
                     }
                 }
             }
             return intersect;
         }
 
-        private ISet unionURI(ISet excluded, String uri)
+        private ISet UnionUri(ISet excluded, string uri)
         {
             if (excluded.IsEmpty)
             {
                 if (uri == null)
-                {
                     return excluded;
-                }
-                excluded.Add(uri);
 
+                excluded.Add(uri);
                 return excluded;
             }
             else
             {
                 ISet union = new HashSet();
-
-                IEnumerator _iter = excluded.GetEnumerator();
-                while (_iter.MoveNext())
+                foreach (string _excluded in excluded)
                 {
-                    String _excluded = (String)_iter.Current;
-
                     unionURI(_excluded, uri, union);
                 }
-
                 return union;
             }
         }
 
-        private void intersectURI(String email1, String email2, ISet intersect)
+        private void IntersectUri(string email1, string email2, ISet intersect)
         {
             // email1 is a particular address
             if (email1.IndexOf('@') != -1)
             {
-                String _sub = email1.Substring(email1.IndexOf('@') + 1);
+                string _sub = email1.Substring(email1.IndexOf('@') + 1);
                 // both are a particular mailbox
                 if (email2.IndexOf('@') != -1)
                 {
@@ -1318,7 +1338,7 @@ namespace Org.BouncyCastle.Pkix
             {
                 if (email2.IndexOf('@') != -1)
                 {
-                    String _sub = email2.Substring(email1.IndexOf('@') + 1);
+                    string _sub = email2.Substring(email1.IndexOf('@') + 1);
                     if (WithinDomain(_sub, email1))
                     {
                         intersect.Add(email2);
@@ -1349,7 +1369,7 @@ namespace Org.BouncyCastle.Pkix
             {
                 if (email2.IndexOf('@') != -1)
                 {
-                    String _sub = email2.Substring(email2.IndexOf('@') + 1);
+                    string _sub = email2.Substring(email2.IndexOf('@') + 1);
                     if (Platform.EqualsIgnoreCase(_sub, email1))
                     {
                         intersect.Add(email2);
@@ -1374,59 +1394,11 @@ namespace Org.BouncyCastle.Pkix
             }
         }
 
-        private void CheckPermittedURI(ISet permitted, String uri)
-        //        throws PkixNameConstraintValidatorException
-        {
-            if (permitted == null)
-            {
-                return;
-            }
-
-            IEnumerator it = permitted.GetEnumerator();
-
-            while (it.MoveNext())
-            {
-                String str = ((String)it.Current);
-
-                if (IsUriConstrained(uri, str))
-                {
-                    return;
-                }
-            }
-            if (uri.Length == 0 && permitted.Count == 0)
-            {
-                return;
-            }
-            throw new PkixNameConstraintValidatorException(
-                "URI is not from a permitted subtree.");
-        }
-
-        private bool IsUriConstrained(String uri, String constraint)
-        {
-            String host = ExtractHostFromURL(uri);
-            // a host
-            if (!Platform.StartsWith(constraint, "."))
-            {
-                if (Platform.EqualsIgnoreCase(host, constraint))
-                {
-                    return true;
-                }
-            }
-
-            // in sub domain or domain
-            else if (WithinDomain(host, constraint))
-            {
-                return true;
-            }
-
-            return false;
-        }
-
-        private static String ExtractHostFromURL(String url)
+        private static string ExtractHostFromURL(string url)
         {
             // see RFC 1738
             // remove ':' after protocol, e.g. http:
-            String sub = url.Substring(url.IndexOf(':') + 1);
+            string sub = url.Substring(url.IndexOf(':') + 1);
             // extract host from Common Internet Scheme Syntax, e.g. http://
             int idxOfSlashes = Platform.IndexOf(sub, "//");
             if (idxOfSlashes != -1)
@@ -1457,30 +1429,28 @@ namespace Org.BouncyCastle.Pkix
          *          If the <code>name</code>
          */
         public void checkPermitted(GeneralName name)
-        //        throws PkixNameConstraintValidatorException
+        //throws PkixNameConstraintValidatorException
         {
             switch (name.TagNo)
             {
-                case 1:
-                    CheckPermittedEmail(permittedSubtreesEmail,
-                        ExtractNameAsString(name));
-                    break;
-                case 2:
-                    CheckPermittedDNS(permittedSubtreesDNS, DerIA5String.GetInstance(
-                        name.Name).GetString());
-                    break;
-                case 4:
-                    CheckPermittedDN(Asn1Sequence.GetInstance(name.Name.ToAsn1Object()));
-                    break;
-                case 6:
-                    CheckPermittedURI(permittedSubtreesURI, DerIA5String.GetInstance(
-                        name.Name).GetString());
-                    break;
-                case 7:
-                    byte[] ip = Asn1OctetString.GetInstance(name.Name).GetOctets();
-
-                    CheckPermittedIP(permittedSubtreesIP, ip);
-                    break;
+            case GeneralName.OtherName:
+                CheckPermittedOtherName(permittedSubtreesOtherName, OtherName.GetInstance(name.Name));
+                break;
+            case GeneralName.Rfc822Name:
+                CheckPermittedEmail(permittedSubtreesEmail, ExtractNameAsString(name));
+                break;
+            case GeneralName.DnsName:
+                CheckPermittedDns(permittedSubtreesDNS, ExtractNameAsString(name));
+                break;
+            case GeneralName.DirectoryName:
+                CheckPermittedDN(Asn1Sequence.GetInstance(name.Name.ToAsn1Object()));
+                break;
+            case GeneralName.UniformResourceIdentifier:
+                CheckPermittedUri(permittedSubtreesURI, ExtractNameAsString(name));
+                break;
+            case GeneralName.IPAddress:
+                CheckPermittedIP(permittedSubtreesIP, Asn1OctetString.GetInstance(name.Name).GetOctets());
+                break;
             }
         }
 
@@ -1493,29 +1463,28 @@ namespace Org.BouncyCastle.Pkix
          *          excluded.
          */
         public void checkExcluded(GeneralName name)
-        //        throws PkixNameConstraintValidatorException
+        //throws PkixNameConstraintValidatorException
         {
             switch (name.TagNo)
             {
-                case 1:
-                    CheckExcludedEmail(excludedSubtreesEmail, ExtractNameAsString(name));
-                    break;
-                case 2:
-                    checkExcludedDNS(excludedSubtreesDNS, DerIA5String.GetInstance(
-                        name.Name).GetString());
-                    break;
-                case 4:
-                    CheckExcludedDN(Asn1Sequence.GetInstance(name.Name.ToAsn1Object()));
-                    break;
-                case 6:
-                    checkExcludedURI(excludedSubtreesURI, DerIA5String.GetInstance(
-                        name.Name).GetString());
-                    break;
-                case 7:
-                    byte[] ip = Asn1OctetString.GetInstance(name.Name).GetOctets();
-
-                    checkExcludedIP(excludedSubtreesIP, ip);
-                    break;
+            case GeneralName.OtherName:
+                CheckExcludedOtherName(excludedSubtreesOtherName, OtherName.GetInstance(name.Name));
+                break;
+            case GeneralName.Rfc822Name:
+                CheckExcludedEmail(excludedSubtreesEmail, ExtractNameAsString(name));
+                break;
+            case GeneralName.DnsName:
+                CheckExcludedDns(excludedSubtreesDNS, ExtractNameAsString(name));
+                break;
+            case GeneralName.DirectoryName:
+                CheckExcludedDN(Asn1Sequence.GetInstance(name.Name.ToAsn1Object()));
+                break;
+            case GeneralName.UniformResourceIdentifier:
+                CheckExcludedUri(excludedSubtreesURI, ExtractNameAsString(name));
+                break;
+            case GeneralName.IPAddress:
+                CheckExcludedIP(excludedSubtreesIP, Asn1OctetString.GetInstance(name.Name).GetOctets());
+                break;
             }
         }
 
@@ -1531,9 +1500,9 @@ namespace Org.BouncyCastle.Pkix
             IDictionary subtreesMap = Platform.CreateHashtable();
 
             // group in ISets in a map ordered by tag no.
-            for (IEnumerator e = permitted.GetEnumerator(); e.MoveNext(); )
+            foreach (object obj in permitted)
             {
-                GeneralSubtree subtree = GeneralSubtree.GetInstance(e.Current);
+                GeneralSubtree subtree = GeneralSubtree.GetInstance(obj);
 
                 int tagNo = subtree.Base.TagNo;
                 if (subtreesMap[tagNo] == null)
@@ -1544,38 +1513,40 @@ namespace Org.BouncyCastle.Pkix
                 ((ISet)subtreesMap[tagNo]).Add(subtree);
             }
 
-            for (IEnumerator it = subtreesMap.GetEnumerator(); it.MoveNext(); )
+            foreach (DictionaryEntry entry in subtreesMap)
             {
-                DictionaryEntry entry = (DictionaryEntry)it.Current;
-
                 // go through all subtree groups
-                switch ((int)entry.Key )
+                switch ((int)entry.Key)
                 {
-                    case 1:
-                        permittedSubtreesEmail = IntersectEmail(permittedSubtreesEmail,
-                            (ISet)entry.Value);
-                        break;
-                    case 2:
-                        permittedSubtreesDNS = intersectDNS(permittedSubtreesDNS,
-                            (ISet)entry.Value);
-                        break;
-                    case 4:
-                        permittedSubtreesDN = IntersectDN(permittedSubtreesDN,
-                            (ISet)entry.Value);
-                        break;
-                    case 6:
-                        permittedSubtreesURI = intersectURI(permittedSubtreesURI,
-                            (ISet)entry.Value);
-                        break;
-                    case 7:
-                        permittedSubtreesIP = IntersectIP(permittedSubtreesIP,
-                            (ISet)entry.Value);
-                        break;
+                case GeneralName.OtherName:
+                    permittedSubtreesOtherName = IntersectOtherName(permittedSubtreesOtherName,
+                        (ISet)entry.Value);
+                    break;
+                case GeneralName.Rfc822Name:
+                    permittedSubtreesEmail = IntersectEmail(permittedSubtreesEmail,
+                        (ISet)entry.Value);
+                    break;
+                case GeneralName.DnsName:
+                    permittedSubtreesDNS = IntersectDns(permittedSubtreesDNS,
+                        (ISet)entry.Value);
+                    break;
+                case GeneralName.DirectoryName:
+                    permittedSubtreesDN = IntersectDN(permittedSubtreesDN,
+                        (ISet)entry.Value);
+                    break;
+                case GeneralName.UniformResourceIdentifier:
+                    permittedSubtreesURI = IntersectUri(permittedSubtreesURI,
+                        (ISet)entry.Value);
+                    break;
+                case GeneralName.IPAddress:
+                    permittedSubtreesIP = IntersectIP(permittedSubtreesIP,
+                        (ISet)entry.Value);
+                    break;
                 }
             }
         }
 
-        private String ExtractNameAsString(GeneralName name)
+        private string ExtractNameAsString(GeneralName name)
         {
             return DerIA5String.GetInstance(name.Name).GetString();
         }
@@ -1584,21 +1555,24 @@ namespace Org.BouncyCastle.Pkix
         {
             switch (nameType)
             {
-                case 1:
-                    permittedSubtreesEmail = new HashSet();
-                    break;
-                case 2:
-                    permittedSubtreesDNS = new HashSet();
-                    break;
-                case 4:
-                    permittedSubtreesDN = new HashSet();
-                    break;
-                case 6:
-                    permittedSubtreesURI = new HashSet();
-                    break;
-                case 7:
-                    permittedSubtreesIP = new HashSet();
-                    break;
+            case GeneralName.OtherName:
+                permittedSubtreesOtherName = new HashSet();
+                break;
+            case GeneralName.Rfc822Name:
+                permittedSubtreesEmail = new HashSet();
+                break;
+            case GeneralName.DnsName:
+                permittedSubtreesDNS = new HashSet();
+                break;
+            case GeneralName.DirectoryName:
+                permittedSubtreesDN = new HashSet();
+                break;
+            case GeneralName.UniformResourceIdentifier:
+                permittedSubtreesURI = new HashSet();
+                break;
+            case GeneralName.IPAddress:
+                permittedSubtreesIP = new HashSet();
+                break;
             }
         }
 
@@ -1613,26 +1587,30 @@ namespace Org.BouncyCastle.Pkix
 
             switch (subTreeBase.TagNo)
             {
-                case 1:
-                    excludedSubtreesEmail = UnionEmail(excludedSubtreesEmail,
-                        ExtractNameAsString(subTreeBase));
-                    break;
-                case 2:
-                    excludedSubtreesDNS = unionDNS(excludedSubtreesDNS,
-                        ExtractNameAsString(subTreeBase));
-                    break;
-                case 4:
-                    excludedSubtreesDN = UnionDN(excludedSubtreesDN,
-                        (Asn1Sequence)subTreeBase.Name.ToAsn1Object());
-                    break;
-                case 6:
-                    excludedSubtreesURI = unionURI(excludedSubtreesURI,
-                        ExtractNameAsString(subTreeBase));
-                    break;
-                case 7:
-                    excludedSubtreesIP = UnionIP(excludedSubtreesIP, Asn1OctetString
-                        .GetInstance(subTreeBase.Name).GetOctets());
-                    break;
+            case GeneralName.OtherName:
+                excludedSubtreesOtherName = UnionOtherName(excludedSubtreesOtherName,
+                    OtherName.GetInstance(subTreeBase.Name));
+                break;
+            case GeneralName.Rfc822Name:
+                excludedSubtreesEmail = UnionEmail(excludedSubtreesEmail,
+                    ExtractNameAsString(subTreeBase));
+                break;
+            case GeneralName.DnsName:
+                excludedSubtreesDNS = UnionDns(excludedSubtreesDNS,
+                    ExtractNameAsString(subTreeBase));
+                break;
+            case GeneralName.DirectoryName:
+                excludedSubtreesDN = UnionDN(excludedSubtreesDN,
+                    (Asn1Sequence)subTreeBase.Name.ToAsn1Object());
+                break;
+            case GeneralName.UniformResourceIdentifier:
+                excludedSubtreesURI = UnionUri(excludedSubtreesURI,
+                    ExtractNameAsString(subTreeBase));
+                break;
+            case GeneralName.IPAddress:
+                excludedSubtreesIP = UnionIP(excludedSubtreesIP,
+                    Asn1OctetString.GetInstance(subTreeBase.Name).GetOctets());
+                break;
             }
         }
 
@@ -1727,27 +1705,26 @@ namespace Org.BouncyCastle.Pkix
                 + HashCollection(excludedSubtreesEmail)
                 + HashCollection(excludedSubtreesIP)
                 + HashCollection(excludedSubtreesURI)
+                + HashCollection(excludedSubtreesOtherName)
                 + HashCollection(permittedSubtreesDN)
                 + HashCollection(permittedSubtreesDNS)
                 + HashCollection(permittedSubtreesEmail)
                 + HashCollection(permittedSubtreesIP)
-                + HashCollection(permittedSubtreesURI);
+                + HashCollection(permittedSubtreesURI)
+                + HashCollection(permittedSubtreesOtherName);
         }
 
-        private int HashCollection(ICollection coll)
+        private int HashCollection(ICollection c)
         {
-            if (coll == null)
-            {
+            if (c == null)
                 return 0;
-            }
+
             int hash = 0;
-            IEnumerator it1 = coll.GetEnumerator();
-            while (it1.MoveNext())
+            foreach (Object o in c)
             {
-                Object o = it1.Current;
                 if (o is byte[])
                 {
-                    hash += Org.BouncyCastle.Utilities.Arrays.GetHashCode((byte[])o);
+                    hash += Arrays.GetHashCode((byte[])o);
                 }
                 else
                 {
@@ -1764,52 +1741,41 @@ namespace Org.BouncyCastle.Pkix
 
 			PkixNameConstraintValidator constraintValidator = (PkixNameConstraintValidator)o;
 
-			return CollectionsAreEqual(constraintValidator.excludedSubtreesDN, excludedSubtreesDN)
-				&& CollectionsAreEqual(constraintValidator.excludedSubtreesDNS, excludedSubtreesDNS)
-				&& CollectionsAreEqual(constraintValidator.excludedSubtreesEmail, excludedSubtreesEmail)
-				&& CollectionsAreEqual(constraintValidator.excludedSubtreesIP, excludedSubtreesIP)
-				&& CollectionsAreEqual(constraintValidator.excludedSubtreesURI, excludedSubtreesURI)
-				&& CollectionsAreEqual(constraintValidator.permittedSubtreesDN, permittedSubtreesDN)
-				&& CollectionsAreEqual(constraintValidator.permittedSubtreesDNS, permittedSubtreesDNS)
-				&& CollectionsAreEqual(constraintValidator.permittedSubtreesEmail, permittedSubtreesEmail)
-				&& CollectionsAreEqual(constraintValidator.permittedSubtreesIP, permittedSubtreesIP)
-				&& CollectionsAreEqual(constraintValidator.permittedSubtreesURI, permittedSubtreesURI);
+            return CollectionsAreEqual(constraintValidator.excludedSubtreesDN, excludedSubtreesDN)
+                && CollectionsAreEqual(constraintValidator.excludedSubtreesDNS, excludedSubtreesDNS)
+                && CollectionsAreEqual(constraintValidator.excludedSubtreesEmail, excludedSubtreesEmail)
+                && CollectionsAreEqual(constraintValidator.excludedSubtreesIP, excludedSubtreesIP)
+                && CollectionsAreEqual(constraintValidator.excludedSubtreesURI, excludedSubtreesURI)
+                && CollectionsAreEqual(constraintValidator.excludedSubtreesOtherName, excludedSubtreesOtherName)
+                && CollectionsAreEqual(constraintValidator.permittedSubtreesDN, permittedSubtreesDN)
+                && CollectionsAreEqual(constraintValidator.permittedSubtreesDNS, permittedSubtreesDNS)
+                && CollectionsAreEqual(constraintValidator.permittedSubtreesEmail, permittedSubtreesEmail)
+                && CollectionsAreEqual(constraintValidator.permittedSubtreesIP, permittedSubtreesIP)
+                && CollectionsAreEqual(constraintValidator.permittedSubtreesURI, permittedSubtreesURI)
+                && CollectionsAreEqual(constraintValidator.permittedSubtreesOtherName, permittedSubtreesOtherName);
 		}
 
         private bool CollectionsAreEqual(ICollection coll1, ICollection coll2)
         {
             if (coll1 == coll2)
-            {
                 return true;
-            }
-            if (coll1 == null || coll2 == null)
-            {
+            if (coll1 == null || coll2 == null || coll1.Count != coll2.Count)
                 return false;
-            }
-            if (coll1.Count != coll2.Count)
-            {
-                return false;
-            }
-            IEnumerator it1 = coll1.GetEnumerator();
 
-            while (it1.MoveNext())
+            foreach (Object a in coll1)
             {
-                Object a = it1.Current;
-                IEnumerator it2 = coll2.GetEnumerator();
                 bool found = false;
-                while (it2.MoveNext())
+                foreach (Object b in coll2)
                 {
-                    Object b = it2.Current;
                     if (SpecialEquals(a, b))
                     {
                         found = true;
                         break;
                     }
                 }
+
                 if (!found)
-                {
                     return false;
-                }
             }
             return true;
         }
@@ -1826,7 +1792,7 @@ namespace Org.BouncyCastle.Pkix
             }
             if ((o1 is byte[]) && (o2 is byte[]))
             {
-                return Org.BouncyCastle.Utilities.Arrays.AreEqual((byte[])o1, (byte[])o2);
+                return Arrays.AreEqual((byte[])o1, (byte[])o2);
             }
             else
             {
@@ -1840,9 +1806,9 @@ namespace Org.BouncyCastle.Pkix
          * @param ip The IP with subnet mask.
          * @return The stringified IP address.
          */
-        private String StringifyIP(byte[] ip)
+        private string StringifyIP(byte[] ip)
         {
-            String temp = "";
+            string temp = "";
             for (int i = 0; i < ip.Length / 2; i++)
             {
                 //temp += Integer.toString(ip[i] & 0x00FF) + ".";
@@ -1859,26 +1825,51 @@ namespace Org.BouncyCastle.Pkix
             return temp;
         }
 
-        private String StringifyIPCollection(ISet ips)
+        private string StringifyIPCollection(ISet ips)
         {
-            String temp = "";
+            string temp = "";
             temp += "[";
-            for (IEnumerator it = ips.GetEnumerator(); it.MoveNext(); )
+            foreach (byte[] ip in ips)
             {
-                temp += StringifyIP((byte[])it.Current) + ",";
+                temp += StringifyIP(ip) + ",";
             }
             if (temp.Length > 1)
             {
                 temp = temp.Substring(0, temp.Length - 1);
             }
             temp += "]";
-
             return temp;
         }
 
-        public override String ToString()
+        private string StringifyOtherNameCollection(ISet otherNames)
         {
-            String temp = "";
+            string temp = "";
+            temp += "[";
+            foreach (object obj in otherNames)
+            {
+                OtherName name = OtherName.GetInstance(obj);
+                if (temp.Length > 1)
+                {
+                    temp += ",";
+                }
+                temp += name.TypeID.Id;
+                temp += ":";
+                try
+                {
+                    temp += Hex.ToHexString(name.Value.ToAsn1Object().GetEncoded());
+                }
+                catch (IOException e)
+                {
+                    temp += e.ToString();
+                }
+            }
+            temp += "]";
+            return temp;
+        }
+
+        public override string ToString()
+        {
+            string temp = "";
 
             temp += "permitted:\n";
             if (permittedSubtreesDN != null)
@@ -1906,6 +1897,11 @@ namespace Org.BouncyCastle.Pkix
                 temp += "IP:\n";
                 temp += StringifyIPCollection(permittedSubtreesIP) + "\n";
             }
+            if (permittedSubtreesOtherName != null)
+            {
+                temp += "OtherName:\n";
+                temp += StringifyOtherNameCollection(permittedSubtreesOtherName);
+            }
             temp += "excluded:\n";
             if (!(excludedSubtreesDN.IsEmpty))
             {
@@ -1932,8 +1928,12 @@ namespace Org.BouncyCastle.Pkix
                 temp += "IP:\n";
                 temp += StringifyIPCollection(excludedSubtreesIP) + "\n";
             }
+            if (!excludedSubtreesOtherName.IsEmpty)
+            {
+                temp += "OtherName:\n";
+                temp += StringifyOtherNameCollection(excludedSubtreesOtherName);
+            }
             return temp;
         }
-
     }
 }

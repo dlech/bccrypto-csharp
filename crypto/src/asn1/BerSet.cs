@@ -1,3 +1,7 @@
+using System;
+
+using Org.BouncyCastle.Utilities;
+
 namespace Org.BouncyCastle.Asn1
 {
     public class BerSet
@@ -5,65 +9,59 @@ namespace Org.BouncyCastle.Asn1
     {
 		public static new readonly BerSet Empty = new BerSet();
 
-		public static new BerSet FromVector(
-			Asn1EncodableVector v)
+		public static new BerSet FromVector(Asn1EncodableVector elementVector)
 		{
-			return v.Count < 1 ? Empty : new BerSet(v);
+            return elementVector.Count < 1 ? Empty : new BerSet(elementVector);
 		}
 
-		internal static new BerSet FromVector(
-			Asn1EncodableVector v,
-			bool				needsSorting)
+        internal static new BerSet FromVector(Asn1EncodableVector elementVector, bool needsSorting)
 		{
-			return v.Count < 1 ? Empty : new BerSet(v, needsSorting);
+            return elementVector.Count < 1 ? Empty : new BerSet(elementVector, needsSorting);
 		}
 
 		/**
          * create an empty sequence
          */
         public BerSet()
+            : base()
         {
         }
 
         /**
          * create a set containing one object
          */
-        public BerSet(Asn1Encodable obj) : base(obj)
+        public BerSet(Asn1Encodable element)
+            : base(element)
         {
         }
 
         /**
          * create a set containing a vector of objects.
          */
-        public BerSet(Asn1EncodableVector v) : base(v, false)
+        public BerSet(Asn1EncodableVector elementVector)
+            : base(elementVector, false)
         {
         }
 
-        internal BerSet(Asn1EncodableVector v, bool needsSorting) : base(v, needsSorting)
+        internal BerSet(Asn1EncodableVector elementVector, bool needsSorting)
+            : base(elementVector, needsSorting)
         {
         }
 
-        /*
-         */
-        internal override void Encode(
-            DerOutputStream derOut)
+        internal override int EncodedLength(bool withID)
         {
-            if (derOut is Asn1OutputStream || derOut is BerOutputStream)
+            throw Platform.CreateNotImplementedException("BerSet.EncodedLength");
+        }
+
+        internal override void Encode(Asn1OutputStream asn1Out, bool withID)
+        {
+            if (asn1Out.IsBer)
             {
-                derOut.WriteByte(Asn1Tags.Set | Asn1Tags.Constructed);
-                derOut.WriteByte(0x80);
-
-                foreach (Asn1Encodable o in this)
-				{
-                    derOut.WriteObject(o);
-                }
-
-                derOut.WriteByte(0x00);
-                derOut.WriteByte(0x00);
+                asn1Out.WriteEncodingIL(withID, Asn1Tags.Constructed | Asn1Tags.Set, elements);
             }
             else
             {
-                base.Encode(derOut);
+                base.Encode(asn1Out, withID);
             }
         }
     }

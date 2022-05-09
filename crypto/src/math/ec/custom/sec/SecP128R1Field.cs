@@ -1,15 +1,17 @@
 ﻿using System;
 using System.Diagnostics;
 
+using Org.BouncyCastle.Crypto.Utilities;
 using Org.BouncyCastle.Math.Raw;
+using Org.BouncyCastle.Security;
 
 namespace Org.BouncyCastle.Math.EC.Custom.Sec
 {
     internal class SecP128R1Field
     {
         // 2^128 - 2^97 - 1
-        internal static readonly uint[] P = new uint[] { 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFD };
-        internal static readonly uint[] PExt = new uint[] { 0x00000001, 0x00000000, 0x00000000, 0x00000004, 0xFFFFFFFE,
+        internal static readonly uint[] P = new uint[]{ 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFD };
+        private static readonly uint[] PExt = new uint[]{ 0x00000001, 0x00000000, 0x00000000, 0x00000004, 0xFFFFFFFE,
             0xFFFFFFFF, 0x00000003, 0xFFFFFFFC };
         private static readonly uint[] PExtInv = new uint[]{ 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFB,
             0x00000001, 0x00000000, 0xFFFFFFFC, 0x00000003 };
@@ -45,7 +47,7 @@ namespace Org.BouncyCastle.Math.EC.Custom.Sec
 
         public static uint[] FromBigInteger(BigInteger x)
         {
-            uint[] z = Nat128.FromBigInteger(x);
+            uint[] z = Nat.FromBigInteger(128, x);
             if (z[3] >= P3 && Nat128.Gte(z, P))
             {
                 Nat128.SubFrom(P, z);
@@ -66,6 +68,22 @@ namespace Org.BouncyCastle.Math.EC.Custom.Sec
             }
         }
 
+        public static void Inv(uint[] x, uint[] z)
+        {
+            Mod.CheckedModOddInverse(P, x, z);
+        }
+
+        public static int IsZero(uint[] x)
+        {
+            uint d = 0;
+            for (int i = 0; i < 4; ++i)
+            {
+                d |= x[i];
+            }
+            d = (d >> 1) | (d & 1);
+            return ((int)d - 1) >> 31;
+        }
+
         public static void Multiply(uint[] x, uint[] y, uint[] z)
         {
             uint[] tt = Nat128.CreateExt();
@@ -84,14 +102,34 @@ namespace Org.BouncyCastle.Math.EC.Custom.Sec
 
         public static void Negate(uint[] x, uint[] z)
         {
-            if (Nat128.IsZero(x))
+            if (0 != IsZero(x))
             {
-                Nat128.Zero(z);
+                Nat128.Sub(P, P, z);
             }
             else
             {
                 Nat128.Sub(P, x, z);
             }
+        }
+
+        public static void Random(SecureRandom r, uint[] z)
+        {
+            byte[] bb = new byte[4 * 4];
+            do
+            {
+                r.NextBytes(bb);
+                Pack.LE_To_UInt32(bb, 0, z, 0, 4);
+            }
+            while (0 == Nat.LessThan(4, z, P));
+        }
+
+        public static void RandomMult(SecureRandom r, uint[] z)
+        {
+            do
+            {
+                Random(r, z);
+            }
+            while (0 != IsZero(z));
         }
 
         public static void Reduce(uint[] xx, uint[] z)
@@ -133,6 +171,11 @@ namespace Org.BouncyCastle.Math.EC.Custom.Sec
                 Debug.Assert(c >= 0 && c <= 2);
 
                 x = (uint)c;
+            }
+
+            if (z[3] >= P3 && Nat128.Gte(z, P))
+            {
+                AddPInvTo(z);
             }
         }
 

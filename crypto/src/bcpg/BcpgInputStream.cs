@@ -196,7 +196,12 @@ namespace Org.BouncyCastle.Bcpg
             else
             {
                 PartialInputStream pis = new PartialInputStream(this, partial, bodyLen);
-                objStream = new BcpgInputStream(pis);
+#if NETCF_1_0 || NETCF_2_0 || SILVERLIGHT || PORTABLE
+                Stream buf = pis;
+#else
+				Stream buf = new BufferedStream(pis);
+#endif
+                objStream = new BcpgInputStream(buf);
             }
 
             switch (tag)
@@ -247,6 +252,17 @@ namespace Org.BouncyCastle.Bcpg
             }
         }
 
+        public PacketTag SkipMarkerPackets()
+        {
+            PacketTag tag;
+            while ((tag = NextPacketTag()) == PacketTag.Marker)
+            {
+                ReadPacket();
+            }
+
+            return tag;
+        }
+
 #if PORTABLE
         protected override void Dispose(bool disposing)
         {
@@ -257,7 +273,7 @@ namespace Org.BouncyCastle.Bcpg
             base.Dispose(disposing);
         }
 #else
-		public override void Close()
+        public override void Close()
 		{
             Platform.Dispose(m_in);
 			base.Close();

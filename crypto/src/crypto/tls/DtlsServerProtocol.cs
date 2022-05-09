@@ -45,6 +45,7 @@ namespace Org.BouncyCastle.Crypto.Tls
             server.Init(state.serverContext);
 
             DtlsRecordLayer recordLayer = new DtlsRecordLayer(transport, state.serverContext, server, ContentType.handshake);
+            server.NotifyCloseHandle(recordLayer);
 
             // TODO Need to handle sending of HelloVerifyRequest without entering a full connection
 
@@ -82,8 +83,8 @@ namespace Org.BouncyCastle.Crypto.Tls
         internal virtual DtlsTransport ServerHandshake(ServerHandshakeState state, DtlsRecordLayer recordLayer)
         {
             SecurityParameters securityParameters = state.serverContext.SecurityParameters;
-            DtlsReliableHandshake handshake = new DtlsReliableHandshake(state.serverContext, recordLayer);
-
+            DtlsReliableHandshake handshake = new DtlsReliableHandshake(state.serverContext, recordLayer,
+                state.server.GetHandshakeTimeoutMillis());
             DtlsReliableHandshake.Message clientMessage = handshake.ReceiveMessage();
 
             // NOTE: DTLSRecordLayer requires any DTLS version, we don't otherwise constrain this

@@ -323,36 +323,6 @@ namespace Org.BouncyCastle.Math.Raw
             return true;
         }
 
-        public static uint[] FromBigInteger(BigInteger x)
-        {
-            if (x.SignValue < 0 || x.BitLength > 256)
-                throw new ArgumentException();
-
-            uint[] z = Create();
-            int i = 0;
-            while (x.SignValue != 0)
-            {
-                z[i++] = (uint)x.IntValue;
-                x = x.ShiftRight(32);
-            }
-            return z;
-        }
-
-        public static ulong[] FromBigInteger64(BigInteger x)
-        {
-            if (x.SignValue < 0 || x.BitLength > 256)
-                throw new ArgumentException();
-
-            ulong[] z = Create64();
-            int i = 0;
-            while (x.SignValue != 0)
-            {
-                z[i++] = (ulong)x.LongValue;
-                x = x.ShiftRight(64);
-            }
-            return z;
-        }
-
         public static uint GetBit(uint[] x, int bit)
         {
             if (bit == 0)
@@ -632,9 +602,10 @@ namespace Org.BouncyCastle.Math.Raw
                 c += x_i * y_7 + zz[i + 7];
                 zz[i + 7] = (uint)c;
                 c >>= 32;
-                c += zc + zz[i + 8];
-                zz[i + 8] = (uint)c;
-                zc = c >> 32;
+
+                zc += c + zz[i + 8];
+                zz[i + 8] = (uint)zc;
+                zc >>= 32;
             }
             return (uint)zc;
         }
@@ -678,9 +649,10 @@ namespace Org.BouncyCastle.Math.Raw
                 c += x_i * y_7 + zz[zzOff + 7];
                 zz[zzOff + 7] = (uint)c;
                 c >>= 32;
-                c += zc + zz[zzOff + 8];
-                zz[zzOff + 8] = (uint)c;
-                zc = c >> 32;
+
+                zc += c + zz[zzOff + 8];
+                zz[zzOff + 8] = (uint)zc;
+                zc >>= 32;
                 ++zzOff;
             }
             return (uint)zc;
