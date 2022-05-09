@@ -1,0 +1,141 @@
+From 4b217dcc50ab4a96c2674615ad265f955011ac7b Mon Sep 17 00:00:00 2001
+From: Jakub Jatczak <jjatczak@antmicro.com>
+Date: Thu, 7 Oct 2021 11:23:00 +0200
+Subject: [PATCH] Unify HKDF files naming
+
+---
+ crypto/BouncyCastle.Android.csproj                          | 4 ++--
+ crypto/BouncyCastle.csproj                                  | 4 ++--
+ crypto/BouncyCastle.iOS.csproj                              | 4 ++--
+ crypto/crypto.csproj                                        | 6 +++---
+ .../{HKdfBytesGenerator.cs => HkdfBytesGenerator.cs}        | 0
+ .../parameters/{HKdfParameters.cs => HkdfParameters.cs}     | 0
+ crypto/test/UnitTests.csproj                                | 2 +-
+ .../test/{HKDFGeneratorTest.cs => HkdfGeneratorTest.cs}     | 0
+ 8 files changed, 10 insertions(+), 10 deletions(-)
+ rename crypto/src/crypto/generators/{HKdfBytesGenerator.cs => HkdfBytesGenerator.cs} (100%)
+ rename crypto/src/crypto/parameters/{HKdfParameters.cs => HkdfParameters.cs} (100%)
+ rename crypto/test/src/crypto/test/{HKDFGeneratorTest.cs => HkdfGeneratorTest.cs} (100%)
+
+diff --git a/crypto/BouncyCastle.Android.csproj b/crypto/BouncyCastle.Android.csproj
+index 5859a1bc8..ee7ee8c54 100644
+--- a/crypto/BouncyCastle.Android.csproj
++++ b/crypto/BouncyCastle.Android.csproj
+@@ -712,7 +712,7 @@
+     <Compile Include="src\crypto\KeyGenerationParameters.cs" />
+     <Compile Include="src\crypto\MaxBytesExceededException.cs" />
+     <Compile Include="src\crypto\OutputLengthException.cs" />
+-    <Compile Include="src\crypto\parameters\HKDFParameters.cs" />
++    <Compile Include="src\crypto\parameters\HkdfParameters.cs" />
+     <Compile Include="src\crypto\PbeParametersGenerator.cs" />
+     <Compile Include="src\crypto\Security.cs" />
+     <Compile Include="src\crypto\SimpleBlockResult.cs" />
+@@ -864,7 +864,7 @@
+     <Compile Include="src\crypto\generators\ElGamalParametersGenerator.cs" />
+     <Compile Include="src\crypto\generators\GOST3410KeyPairGenerator.cs" />
+     <Compile Include="src\crypto\generators\GOST3410ParametersGenerator.cs" />
+-    <Compile Include="src\crypto\generators\HKDFBytesGenerator.cs" />
++    <Compile Include="src\crypto\generators\HkdfBytesGenerator.cs" />
+     <Compile Include="src\crypto\generators\Kdf1BytesGenerator.cs" />
+     <Compile Include="src\crypto\generators\Kdf2BytesGenerator.cs" />
+     <Compile Include="src\crypto\generators\KDFCounterBytesGenerator.cs" />
+diff --git a/crypto/BouncyCastle.csproj b/crypto/BouncyCastle.csproj
+index 3a3dadd21..8dd03b86f 100644
+--- a/crypto/BouncyCastle.csproj
++++ b/crypto/BouncyCastle.csproj
+@@ -709,7 +709,7 @@
+     <Compile Include="src\crypto\Security.cs" />
+     <Compile Include="src\crypto\SimpleBlockResult.cs" />
+     <Compile Include="src\crypto\StreamBlockCipher.cs" />
+-    <Compile Include="src\crypto\parameters\HKDFParameters.cs" />
++    <Compile Include="src\crypto\parameters\HkdfParameters.cs" />
+     <Compile Include="src\crypto\PbeParametersGenerator.cs" />
+     <Compile Include="src\crypto\agreement\DHAgreement.cs" />
+     <Compile Include="src\crypto\agreement\DHBasicAgreement.cs" />
+@@ -858,7 +858,7 @@
+     <Compile Include="src\crypto\generators\ElGamalParametersGenerator.cs" />
+     <Compile Include="src\crypto\generators\GOST3410KeyPairGenerator.cs" />
+     <Compile Include="src\crypto\generators\GOST3410ParametersGenerator.cs" />
+-    <Compile Include="src\crypto\generators\HKDFBytesGenerator.cs" />
++    <Compile Include="src\crypto\generators\HkdfBytesGenerator.cs" />
+     <Compile Include="src\crypto\generators\Kdf1BytesGenerator.cs" />
+     <Compile Include="src\crypto\generators\Kdf2BytesGenerator.cs" />
+     <Compile Include="src\crypto\generators\KDFCounterBytesGenerator.cs" />
+diff --git a/crypto/BouncyCastle.iOS.csproj b/crypto/BouncyCastle.iOS.csproj
+index d02d6b97b..2a8b7cb04 100644
+--- a/crypto/BouncyCastle.iOS.csproj
++++ b/crypto/BouncyCastle.iOS.csproj
+@@ -707,7 +707,7 @@
+     <Compile Include="src\crypto\KeyGenerationParameters.cs" />
+     <Compile Include="src\crypto\MaxBytesExceededException.cs" />
+     <Compile Include="src\crypto\OutputLengthException.cs" />
+-    <Compile Include="src\crypto\parameters\HKDFParameters.cs" />
++    <Compile Include="src\crypto\parameters\HkdfParameters.cs" />
+     <Compile Include="src\crypto\PbeParametersGenerator.cs" />
+     <Compile Include="src\crypto\Security.cs" />
+     <Compile Include="src\crypto\SimpleBlockResult.cs" />
+@@ -859,7 +859,7 @@
+     <Compile Include="src\crypto\generators\ElGamalParametersGenerator.cs" />
+     <Compile Include="src\crypto\generators\GOST3410KeyPairGenerator.cs" />
+     <Compile Include="src\crypto\generators\GOST3410ParametersGenerator.cs" />
+-    <Compile Include="src\crypto\generators\HKDFBytesGenerator.cs" />
++    <Compile Include="src\crypto\generators\HkdfBytesGenerator.cs" />
+     <Compile Include="src\crypto\generators\Kdf1BytesGenerator.cs" />
+     <Compile Include="src\crypto\generators\Kdf2BytesGenerator.cs" />
+     <Compile Include="src\crypto\generators\KDFCounterBytesGenerator.cs" />
+diff --git a/crypto/crypto.csproj b/crypto/crypto.csproj
+index f562cf91d..76e71d237 100644
+--- a/crypto/crypto.csproj
++++ b/crypto/crypto.csproj
+@@ -4174,7 +4174,7 @@
+                     BuildAction = "Compile"
+                 />
+                 <File
+-                    RelPath = "src\crypto\generators\HKDFBytesGenerator.cs"
++                    RelPath = "src\crypto\generators\HkdfBytesGenerator.cs"
+                     SubType = "Code"
+                     BuildAction = "Compile"
+                 />
+@@ -4809,7 +4809,7 @@
+                     BuildAction = "Compile"
+                 />
+                 <File
+-                    RelPath = "src\crypto\parameters\HKDFParameters.cs"
++                    RelPath = "src\crypto\parameters\HkdfParameters.cs"
+                     SubType = "Code"
+                     BuildAction = "Compile"
+                 />
+@@ -14054,7 +14054,7 @@
+                     BuildAction = "Compile"
+                 />
+                 <File
+-                    RelPath = "test\src\crypto\test\HKDFGeneratorTest.cs"
++                    RelPath = "test\src\crypto\test\HkdfGeneratorTest.cs"
+                     SubType = "Code"
+                     BuildAction = "Compile"
+                 />
+diff --git a/crypto/src/crypto/generators/HKdfBytesGenerator.cs b/crypto/src/crypto/generators/HkdfBytesGenerator.cs
+similarity index 100%
+rename from crypto/src/crypto/generators/HKdfBytesGenerator.cs
+rename to crypto/src/crypto/generators/HkdfBytesGenerator.cs
+diff --git a/crypto/src/crypto/parameters/HKdfParameters.cs b/crypto/src/crypto/parameters/HkdfParameters.cs
+similarity index 100%
+rename from crypto/src/crypto/parameters/HKdfParameters.cs
+rename to crypto/src/crypto/parameters/HkdfParameters.cs
+diff --git a/crypto/test/UnitTests.csproj b/crypto/test/UnitTests.csproj
+index 1cacbd43f..eff95fca2 100644
+--- a/crypto/test/UnitTests.csproj
++++ b/crypto/test/UnitTests.csproj
+@@ -214,7 +214,7 @@
+     <Compile Include="src\crypto\test\GOST3411_2012_512DigestTest.cs" />
+     <Compile Include="src\crypto\test\HCFamilyTest.cs" />
+     <Compile Include="src\crypto\test\HCFamilyVecTest.cs" />
+-    <Compile Include="src\crypto\test\HKDFGeneratorTest.cs" />
++    <Compile Include="src\crypto\test\HkdfGeneratorTest.cs" />
+     <Compile Include="src\crypto\test\IDEATest.cs" />
+     <Compile Include="src\crypto\test\ISAACTest.cs" />
+     <Compile Include="src\crypto\test\ISO9796Test.cs" />
+diff --git a/crypto/test/src/crypto/test/HKDFGeneratorTest.cs b/crypto/test/src/crypto/test/HkdfGeneratorTest.cs
+similarity index 100%
+rename from crypto/test/src/crypto/test/HKDFGeneratorTest.cs
+rename to crypto/test/src/crypto/test/HkdfGeneratorTest.cs

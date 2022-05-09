@@ -1,0 +1,7 @@
+.debhelper/
+debhelper*
+files
+*.log
+*.substvars
+
+libbccrypto-cil/

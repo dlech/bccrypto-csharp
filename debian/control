@@ -2,7 +2,7 @@ Source: bccrypto-csharp
 Section: cli-mono
 Priority: optional
 Maintainer: David Lechner <david@lechnology.com>
-Build-Depends: debhelper (>= 10), cli-common-dev (>= 0.8)
+Build-Depends: debhelper (>= 13), cli-common-dev (>= 0.8)
 Standards-Version: 4.1.4
 Homepage: https://lechnology.com/bccrypto-csharp
 Vcs-Git: https://github.com/dlech/bccrypto-csharp.git
