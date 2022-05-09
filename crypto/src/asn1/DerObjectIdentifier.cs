@@ -11,9 +11,13 @@ namespace Org.BouncyCastle.Asn1
     public class DerObjectIdentifier
         : Asn1Object
     {
-        private readonly string identifier;
+        public static DerObjectIdentifier FromContents(byte[] contents)
+        {
+            return CreatePrimitive(contents, true);
+        }
 
-        private byte[] body = null;
+        private readonly string identifier;
+        private byte[] contents;
 
         /**
          * return an Oid from the passed in object
@@ -24,8 +28,18 @@ namespace Org.BouncyCastle.Asn1
         {
             if (obj == null || obj is DerObjectIdentifier)
                 return (DerObjectIdentifier) obj;
+
+            if (obj is Asn1Encodable)
+            {
+                Asn1Object asn1Obj = ((Asn1Encodable)obj).ToAsn1Object();
+
+                if (asn1Obj is DerObjectIdentifier)
+                    return (DerObjectIdentifier)asn1Obj;
+            }
+
             if (obj is byte[])
-                return FromOctetString((byte[])obj);
+                return (DerObjectIdentifier)FromByteArray((byte[])obj);
+
             throw new ArgumentException("illegal object in GetInstance: " + Platform.GetTypeName(obj), "obj");
         }
 
@@ -49,7 +63,7 @@ namespace Org.BouncyCastle.Asn1
                 return GetInstance(o);
             }
 
-            return FromOctetString(Asn1OctetString.GetInstance(o).GetOctets());
+            return FromContents(Asn1OctetString.GetInstance(o).GetOctets());
         }
 
         public DerObjectIdentifier(
@@ -93,10 +107,10 @@ namespace Org.BouncyCastle.Asn1
             return id.Length > stemId.Length && id[stemId.Length] == '.' && Platform.StartsWith(id, stemId);
         }
 
-        internal DerObjectIdentifier(byte[] bytes)
+        internal DerObjectIdentifier(byte[] contents, bool clone)
         {
-            this.identifier = MakeOidStringFromBytes(bytes);
-            this.body = Arrays.Clone(bytes);
+            this.identifier = MakeOidStringFromBytes(contents);
+            this.contents = clone ? Arrays.Clone(contents) : contents;
         }
 
         private void WriteField(
@@ -168,25 +182,29 @@ namespace Org.BouncyCastle.Asn1
             }
         }
 
-        internal byte[] GetBody()
+        private byte[] GetContents()
         {
             lock (this)
             {
-                if (body == null)
+                if (contents == null)
                 {
                     MemoryStream bOut = new MemoryStream();
                     DoOutput(bOut);
-                    body = bOut.ToArray();
+                    contents = bOut.ToArray();
                 }
-            }
 
-            return body;
+                return contents;
+            }
         }
 
-        internal override void Encode(
-            DerOutputStream derOut)
+        internal override int EncodedLength(bool withID)
         {
-            derOut.WriteEncoded(Asn1Tags.ObjectIdentifier, GetBody());
+            return Asn1OutputStream.GetLengthOfEncodingDL(withID, GetContents().Length);
+        }
+
+        internal override void Encode(Asn1OutputStream asn1Out, bool withID)
+        {
+            asn1Out.WriteEncodingDL(withID, Asn1Tags.ObjectIdentifier, GetContents());
         }
 
         protected override int Asn1GetHashCode()
@@ -210,36 +228,36 @@ namespace Org.BouncyCastle.Asn1
             return identifier;
         }
 
-        private static bool IsValidBranchID(
-            string branchID, int start)
+        private static bool IsValidBranchID(string branchID, int start)
         {
-            bool periodAllowed = false;
+            int digitCount = 0;
 
             int pos = branchID.Length;
             while (--pos >= start)
             {
                 char ch = branchID[pos];
 
-                // TODO Leading zeroes?
-                if ('0' <= ch && ch <= '9')
-                {
-                    periodAllowed = true;
-                    continue;
-                }
-
                 if (ch == '.')
                 {
-                    if (!periodAllowed)
+                    if (0 == digitCount || (digitCount > 1 && branchID[pos + 1] == '0'))
                         return false;
 
-                    periodAllowed = false;
-                    continue;
+                    digitCount = 0;
                 }
-
-                return false;
+                else if ('0' <= ch && ch <= '9')
+                {
+                    ++digitCount;
+                }
+                else
+                {
+                    return false;
+                }
             }
 
-            return periodAllowed;
+            if (0 == digitCount || (digitCount > 1 && branchID[pos + 1] == '0'))
+                return false;
+
+            return true;
         }
 
         private static bool IsValidIdentifier(string identifier)
@@ -334,20 +352,20 @@ namespace Org.BouncyCastle.Asn1
 
         private static readonly DerObjectIdentifier[] cache = new DerObjectIdentifier[1024];
 
-        internal static DerObjectIdentifier FromOctetString(byte[] enc)
+        internal static DerObjectIdentifier CreatePrimitive(byte[] contents, bool clone)
         {
-            int hashCode = Arrays.GetHashCode(enc);
+            int hashCode = Arrays.GetHashCode(contents);
             int first = hashCode & 1023;
 
             lock (cache)
             {
                 DerObjectIdentifier entry = cache[first];
-                if (entry != null && Arrays.AreEqual(enc, entry.GetBody()))
+                if (entry != null && Arrays.AreEqual(contents, entry.GetContents()))
                 {
                     return entry;
                 }
 
-                return cache[first] = new DerObjectIdentifier(enc);
+                return cache[first] = new DerObjectIdentifier(contents, clone);
             }
         }
     }

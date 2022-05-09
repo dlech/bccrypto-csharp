@@ -36,7 +36,7 @@ namespace Org.BouncyCastle.Security
             SHA_1, SHA_224, SHA_256, SHA_384, SHA_512,
             SHA_512_224, SHA_512_256,
             SHA3_224, SHA3_256, SHA3_384, SHA3_512,
-            SHAKE128, SHAKE256,
+            SHAKE128_256, SHAKE256_512,
             SM3,
             TIGER,
             WHIRLPOOL,
@@ -60,17 +60,28 @@ namespace Org.BouncyCastle.Security
 
             algorithms["SHA1"] = "SHA-1";
             algorithms[OiwObjectIdentifiers.IdSha1.Id] = "SHA-1";
+            algorithms[PkcsObjectIdentifiers.IdHmacWithSha1.Id] = "SHA-1";
+            algorithms[MiscObjectIdentifiers.HMAC_SHA1.Id] = "SHA-1";
             algorithms["SHA224"] = "SHA-224";
             algorithms[NistObjectIdentifiers.IdSha224.Id] = "SHA-224";
+            algorithms[PkcsObjectIdentifiers.IdHmacWithSha224.Id] = "SHA-224";
             algorithms["SHA256"] = "SHA-256";
             algorithms[NistObjectIdentifiers.IdSha256.Id] = "SHA-256";
+            algorithms[PkcsObjectIdentifiers.IdHmacWithSha256.Id] = "SHA-256";
             algorithms["SHA384"] = "SHA-384";
             algorithms[NistObjectIdentifiers.IdSha384.Id] = "SHA-384";
+            algorithms[PkcsObjectIdentifiers.IdHmacWithSha384.Id] = "SHA-384";
             algorithms["SHA512"] = "SHA-512";
             algorithms[NistObjectIdentifiers.IdSha512.Id] = "SHA-512";
+            algorithms[PkcsObjectIdentifiers.IdHmacWithSha512.Id] = "SHA-512";
+
             algorithms["SHA512/224"] = "SHA-512/224";
+            algorithms["SHA512(224)"] = "SHA-512/224";
+            algorithms["SHA-512(224)"] = "SHA-512/224";
             algorithms[NistObjectIdentifiers.IdSha512_224.Id] = "SHA-512/224";
             algorithms["SHA512/256"] = "SHA-512/256";
+            algorithms["SHA512(256)"] = "SHA-512/256";
+            algorithms["SHA-512(256)"] = "SHA-512/256";
             algorithms[NistObjectIdentifiers.IdSha512_256.Id] = "SHA-512/256";
 
             algorithms["RIPEMD-128"] = "RIPEMD128";
@@ -91,11 +102,17 @@ namespace Org.BouncyCastle.Security
             algorithms["KECCAK512"] = "KECCAK-512";
 
             algorithms[NistObjectIdentifiers.IdSha3_224.Id] = "SHA3-224";
+            algorithms[NistObjectIdentifiers.IdHMacWithSha3_224.Id] = "SHA3-224";
             algorithms[NistObjectIdentifiers.IdSha3_256.Id] = "SHA3-256";
+            algorithms[NistObjectIdentifiers.IdHMacWithSha3_256.Id] = "SHA3-256";
             algorithms[NistObjectIdentifiers.IdSha3_384.Id] = "SHA3-384";
+            algorithms[NistObjectIdentifiers.IdHMacWithSha3_384.Id] = "SHA3-384";
             algorithms[NistObjectIdentifiers.IdSha3_512.Id] = "SHA3-512";
-            algorithms[NistObjectIdentifiers.IdShake128.Id] = "SHAKE128";
-            algorithms[NistObjectIdentifiers.IdShake256.Id] = "SHAKE256";
+            algorithms[NistObjectIdentifiers.IdHMacWithSha3_512.Id] = "SHA3-512";
+            algorithms["SHAKE128"] = "SHAKE128-256";
+            algorithms[NistObjectIdentifiers.IdShake128.Id] = "SHAKE128-256";
+            algorithms["SHAKE256"] = "SHAKE256-512";
+            algorithms[NistObjectIdentifiers.IdShake256.Id] = "SHAKE256-512";
 
             algorithms[GMObjectIdentifiers.sm3.Id] = "SM3";
 
@@ -129,8 +146,8 @@ namespace Org.BouncyCastle.Security
             oids["SHA3-256"] = NistObjectIdentifiers.IdSha3_256;
             oids["SHA3-384"] = NistObjectIdentifiers.IdSha3_384;
             oids["SHA3-512"] = NistObjectIdentifiers.IdSha3_512;
-            oids["SHAKE128"] = NistObjectIdentifiers.IdShake128;
-            oids["SHAKE256"] = NistObjectIdentifiers.IdShake256;
+            oids["SHAKE128-256"] = NistObjectIdentifiers.IdShake128;
+            oids["SHAKE256-512"] = NistObjectIdentifiers.IdShake256;
             oids["RIPEMD128"] = TeleTrusTObjectIdentifiers.RipeMD128;
             oids["RIPEMD160"] = TeleTrusTObjectIdentifiers.RipeMD160;
             oids["RIPEMD256"] = TeleTrusTObjectIdentifiers.RipeMD256;
@@ -239,8 +256,8 @@ namespace Org.BouncyCastle.Security
                     case DigestAlgorithm.SHA3_256: return new Sha3Digest(256);
                     case DigestAlgorithm.SHA3_384: return new Sha3Digest(384);
                     case DigestAlgorithm.SHA3_512: return new Sha3Digest(512);
-                    case DigestAlgorithm.SHAKE128: return new ShakeDigest(128);
-                    case DigestAlgorithm.SHAKE256: return new ShakeDigest(256);
+                    case DigestAlgorithm.SHAKE128_256: return new ShakeDigest(128);
+                    case DigestAlgorithm.SHAKE256_512: return new ShakeDigest(256);
                     case DigestAlgorithm.SM3: return new SM3Digest();
                     case DigestAlgorithm.TIGER: return new TigerDigest();
                     case DigestAlgorithm.WHIRLPOOL: return new WhirlpoolDigest();

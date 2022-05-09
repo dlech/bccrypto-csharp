@@ -364,11 +364,10 @@ namespace Org.BouncyCastle.Bcpg.OpenPgp.Tests
 
 		public override string Name
         {
-			get { return "PGPPBETest"; }
+			get { return "PgpPbeTest"; }
         }
 
-		public static void Main(
-			string[] args)
+		public static void Main(string[] args)
         {
 			RunTest(new PgpPbeTest());
         }

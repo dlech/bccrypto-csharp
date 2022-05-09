@@ -3,6 +3,7 @@ using System;
 using Org.BouncyCastle.Crypto.Digests;
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Security;
+using Org.BouncyCastle.Utilities;
 
 namespace Org.BouncyCastle.Crypto.Signers
 {
@@ -103,7 +104,7 @@ namespace Org.BouncyCastle.Crypto.Signers
 			IDigest					digest,
 			int						saltLen,
 			byte					trailer)
-			: this(cipher, digest, digest, saltLen, TrailerImplicit)
+			: this(cipher, digest, digest, saltLen, trailer)
 		{
 		}
 
@@ -244,17 +245,18 @@ namespace Org.BouncyCastle.Crypto.Signers
 			block[block.Length - sLen - 1 - hLen - 1] = (byte) (0x01);
 			salt.CopyTo(block, block.Length - sLen - hLen - 1);
 
-			byte[] dbMask = MaskGeneratorFunction1(h, 0, h.Length, block.Length - hLen - 1);
+			byte[] dbMask = MaskGeneratorFunction(h, 0, h.Length, block.Length - hLen - 1);
 			for (int i = 0; i != dbMask.Length; i++)
 			{
 				block[i] ^= dbMask[i];
 			}
 
-			block[0] &= (byte) ((0xff >> ((block.Length * 8) - emBits)));
+            h.CopyTo(block, block.Length - hLen - 1);
 
-			h.CopyTo(block, block.Length - hLen - 1);
+            uint firstByteMask = 0xFFU >> ((block.Length * 8) - emBits);
 
-			block[block.Length - 1] = trailer;
+            block[0] &= (byte)firstByteMask;
+            block[block.Length - 1] = trailer;
 
 			byte[] b = cipher.ProcessBlock(block, 0, block.Length);
 
@@ -269,25 +271,29 @@ namespace Org.BouncyCastle.Crypto.Signers
 		public virtual bool VerifySignature(
 			byte[] signature)
 		{
-			contentDigest1.DoFinal(mDash, mDash.Length - hLen - sLen);
+            contentDigest1.DoFinal(mDash, mDash.Length - hLen - sLen);
 
-			byte[] b = cipher.ProcessBlock(signature, 0, signature.Length);
+            byte[] b = cipher.ProcessBlock(signature, 0, signature.Length);
+            Arrays.Fill(block, 0, block.Length - b.Length, 0);
 			b.CopyTo(block, block.Length - b.Length);
 
-			if (block[block.Length - 1] != trailer)
+            uint firstByteMask = 0xFFU >> ((block.Length * 8) - emBits);
+
+			if (block[0] != (byte)(block[0] & firstByteMask)
+                || block[block.Length - 1] != trailer)
 			{
 				ClearBlock(block);
 				return false;
 			}
 
-			byte[] dbMask = MaskGeneratorFunction1(block, block.Length - hLen - 1, hLen, block.Length - hLen - 1);
+			byte[] dbMask = MaskGeneratorFunction(block, block.Length - hLen - 1, hLen, block.Length - hLen - 1);
 
 			for (int i = 0; i != dbMask.Length; i++)
 			{
 				block[i] ^= dbMask[i];
 			}
 
-			block[0] &= (byte) ((0xff >> ((block.Length * 8) - emBits)));
+            block[0] &= (byte)firstByteMask;
 
 			for (int i = 0; i != block.Length - hLen - sLen - 2; i++)
 			{
@@ -341,6 +347,26 @@ namespace Org.BouncyCastle.Crypto.Signers
 			sp[1] = (byte)((uint) i >> 16);
 			sp[2] = (byte)((uint) i >> 8);
 			sp[3] = (byte)((uint) i >> 0);
+		}
+
+		private byte[] MaskGeneratorFunction(
+			byte[] Z,
+			int zOff,
+			int zLen,
+			int length)
+		{
+			if (mgfDigest is IXof)
+			{
+				byte[] mask = new byte[length];
+				mgfDigest.BlockUpdate(Z, zOff, zLen);
+				((IXof)mgfDigest).DoFinal(mask, 0, mask.Length);
+
+				return mask;
+			}
+			else
+			{
+				return MaskGeneratorFunction1(Z, zOff, zLen, length);
+			}
 		}
 
 		/// <summary> mask generator function, as described in Pkcs1v2.</summary>

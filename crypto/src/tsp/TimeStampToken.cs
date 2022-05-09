@@ -10,7 +10,6 @@ using Org.BouncyCastle.Asn1.Pkcs;
 using Org.BouncyCastle.Asn1.Tsp;
 using Org.BouncyCastle.Asn1.X509;
 using Org.BouncyCastle.Cms;
-using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Security;
 using Org.BouncyCastle.Security.Certificates;
 using Org.BouncyCastle.Utilities;
@@ -85,9 +84,17 @@ namespace Org.BouncyCastle.Tsp
 
 				if (attr != null)
 				{
-					SigningCertificate signCert = SigningCertificate.GetInstance(attr.AttrValues[0]);
 
-					this.certID = new CertID(EssCertID.GetInstance(signCert.GetCerts()[0]));
+					if (attr.AttrValues[0] is SigningCertificateV2)
+					{
+						SigningCertificateV2 signCert = SigningCertificateV2.GetInstance(attr.AttrValues[0]);
+						this.certID = new CertID(EssCertIDv2.GetInstance(signCert.GetCerts()[0]));
+					}
+					else
+					{
+						SigningCertificate signCert = SigningCertificate.GetInstance(attr.AttrValues[0]);
+						this.certID = new CertID(EssCertID.GetInstance(signCert.GetCerts()[0]));
+					}
 				}
 				else
 				{
@@ -139,7 +146,12 @@ namespace Org.BouncyCastle.Tsp
 			return tsToken.GetCrls(type);
 		}
 
-	    public IX509Store GetAttributeCertificates(
+        public IX509Store GetCertificates()
+        {
+			return tsToken.GetCertificates();
+        }
+
+        public IX509Store GetAttributeCertificates(
 			string type)
 	    {
 	        return tsToken.GetAttributeCertificates(type);
@@ -168,16 +180,12 @@ namespace Org.BouncyCastle.Tsp
 					certID.GetHashAlgorithmName(), cert.GetEncoded());
 
 				if (!Arrays.ConstantTimeAreEqual(certID.GetCertHash(), hash))
-				{
 					throw new TspValidationException("certificate hash does not match certID hash.");
-				}
 
 				if (certID.IssuerSerial != null)
 				{
-					if (!certID.IssuerSerial.Serial.Value.Equals(cert.SerialNumber))
-					{
+					if (!certID.IssuerSerial.Serial.HasValue(cert.SerialNumber))
 						throw new TspValidationException("certificate serial number does not match certID for signature.");
-					}
 
 					GeneralName[] names = certID.IssuerSerial.Issuer.GetNames();
 					X509Name principal = PrincipalUtilities.GetIssuerX509Principal(cert);
@@ -244,9 +252,18 @@ namespace Org.BouncyCastle.Tsp
 		 */
 		public byte[] GetEncoded()
 		{
-			return tsToken.GetEncoded();
-		}
+            return tsToken.GetEncoded(Asn1Encodable.Der);
+        }
 
+        /**
+         * return the ASN.1 encoded representation of this object using the specified encoding.
+         *
+         * @param encoding the ASN.1 encoding format to use ("BER" or "DER").
+         */
+        public byte[] GetEncoded(string encoding)
+        {
+            return tsToken.GetEncoded(encoding);
+        }
 
 		// perhaps this should be done using an interface on the ASN.1 classes...
 		private class CertID

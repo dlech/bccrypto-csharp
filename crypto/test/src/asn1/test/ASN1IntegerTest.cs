@@ -3,6 +3,7 @@
 using NUnit.Framework;
 
 using Org.BouncyCastle.Math;
+using Org.BouncyCastle.Utilities;
 using Org.BouncyCastle.Utilities.Encoders;
 using Org.BouncyCastle.Utilities.Test;
 
@@ -48,7 +49,7 @@ namespace Org.BouncyCastle.Asn1.Tests
 
             new DerInteger(Hex.Decode("ffda47bfc776bcd269da4832626ac332adfca6dd835e8ecd83cd1ebe7d709b0e"));
 
-            new DerEnumerated(Hex.Decode("ffda47bfc776bcd269da4832626ac332adfca6dd835e8ecd83cd1ebe7d709b0e"));
+            new DerEnumerated(Hex.Decode("005a47bfc776bcd269da4832626ac332adfca6dd835e8ecd83cd1ebe7d709b0e"));
 
             SetAllowUnsafeProperty(false);
 
@@ -60,7 +61,7 @@ namespace Org.BouncyCastle.Asn1.Tests
             }
             catch (ArgumentException e)
             {
-                IsEquals("malformed integer", e.Message);
+                CheckArgumentException(e, "malformed integer");
             }
 
             // No support for thread-local override in C# version
@@ -78,7 +79,7 @@ namespace Org.BouncyCastle.Asn1.Tests
             }
             catch (ArgumentException e)
             {
-                IsEquals("test 1", "failed to construct sequence from byte[]: corrupted stream detected", e.Message);
+                CheckArgumentException("test 1", e, "failed to construct sequence from byte[]: corrupted stream detected");
             }
 
             try
@@ -89,7 +90,7 @@ namespace Org.BouncyCastle.Asn1.Tests
             }
             catch (ArgumentException e)
             {
-                IsEquals("malformed integer", e.Message);
+                CheckArgumentException(e, "malformed integer");
             }
 
             try
@@ -100,7 +101,18 @@ namespace Org.BouncyCastle.Asn1.Tests
             }
             catch (ArgumentException e)
             {
-                IsEquals("malformed enumerated", e.Message);
+                CheckArgumentException(e, "malformed enumerated");
+            }
+
+            try
+            {
+                new DerEnumerated(Hex.Decode("005a47bfc776bcd269da4832626ac332adfca6dd835e8ecd83cd1ebe7d709b0e"));
+
+                Fail("no exception");
+            }
+            catch (ArgumentException e)
+            {
+                CheckArgumentException(e, "malformed enumerated");
             }
 #endif
         }
@@ -117,7 +129,7 @@ namespace Org.BouncyCastle.Asn1.Tests
             //
             byte[] rawInt = Hex.Decode("10");
             DerInteger i = new DerInteger(rawInt);
-            IsEquals(i.Value.IntValue, 16);
+            CheckIntValue(i, 16);
 
             //
             // With property set.
@@ -126,7 +138,7 @@ namespace Org.BouncyCastle.Asn1.Tests
 
             rawInt = Hex.Decode("10");
             i = new DerInteger(rawInt);
-            IsEquals(i.Value.IntValue, 16);
+            CheckIntValue(i, 16);
         }
 
         public void DoTestValidEncodingMultiByte()
@@ -138,7 +150,7 @@ namespace Org.BouncyCastle.Asn1.Tests
             //
             byte[] rawInt = Hex.Decode("10FF");
             DerInteger i = new DerInteger(rawInt);
-            IsEquals(i.Value.IntValue, 4351);
+            CheckIntValue(i, 4351);
 
             //
             // With property set.
@@ -147,7 +159,7 @@ namespace Org.BouncyCastle.Asn1.Tests
 
             rawInt = Hex.Decode("10FF");
             i = new DerInteger(rawInt);
-            IsEquals(i.Value.IntValue, 4351);
+            CheckIntValue(i, 4351);
         }
 
         public void DoTestInvalidEncoding_00()
@@ -162,7 +174,7 @@ namespace Org.BouncyCastle.Asn1.Tests
             }
             catch (ArgumentException e)
             {
-                IsEquals("malformed integer", e.Message);
+                CheckArgumentException(e, "malformed integer");
             }
         }
 
@@ -173,12 +185,12 @@ namespace Org.BouncyCastle.Asn1.Tests
             try
             {
                 byte[] rawInt = Hex.Decode("FF81FF");
-                DerInteger i = new DerInteger(rawInt);
+                new DerInteger(rawInt);
                 Fail("Expecting illegal argument exception.");
             }
             catch (ArgumentException e)
             {
-                IsEquals("malformed integer", e.Message);
+                CheckArgumentException(e, "malformed integer");
             }
         }
 
@@ -192,13 +204,12 @@ namespace Org.BouncyCastle.Asn1.Tests
             try
             {
                 byte[] rawInt = Hex.Decode("0000000010FF");
-                DerInteger i = new DerInteger(rawInt);
-                IsEquals(i.Value.IntValue, 4351);
+                new DerInteger(rawInt);
                 Fail("Expecting illegal argument exception.");
             }
             catch (ArgumentException e)
             {
-                IsEquals("malformed integer", e.Message);
+                CheckArgumentException(e, "malformed integer");
             }
         }
 
@@ -212,12 +223,12 @@ namespace Org.BouncyCastle.Asn1.Tests
             try
             {
                 byte[] rawInt = Hex.Decode("FFFFFFFF01FF");
-                DerInteger i = new DerInteger(rawInt);
+                new DerInteger(rawInt);
                 Fail("Expecting illegal argument exception.");
             }
             catch (ArgumentException e)
             {
-                IsEquals("malformed integer", e.Message);
+                CheckArgumentException(e, "malformed integer");
             }
         }
 
@@ -235,12 +246,12 @@ namespace Org.BouncyCastle.Asn1.Tests
             {
                 SetAllowUnsafeProperty(true);
                 byte[] rawInt = Hex.Decode("0000000010FF");
-                DerInteger i = new DerInteger(rawInt);
+                new DerInteger(rawInt);
                 Fail("Expecting illegal argument exception.");
             }
             catch (ArgumentException e)
             {
-                IsEquals("malformed integer", e.Message);
+                CheckArgumentException(e, "malformed integer");
             }
         }
 
@@ -254,12 +265,12 @@ namespace Org.BouncyCastle.Asn1.Tests
             {
                 SetAllowUnsafeProperty(true);
                 byte[] rawInt = Hex.Decode("FFFFFFFF10FF");
-                DerInteger i = new DerInteger(rawInt);
+                new DerInteger(rawInt);
                 Fail("Expecting illegal argument exception.");
             }
             catch (ArgumentException e)
             {
-                IsEquals("malformed integer", e.Message);
+                CheckArgumentException(e, "malformed integer");
             }
         }
         */
@@ -272,7 +283,7 @@ namespace Org.BouncyCastle.Asn1.Tests
             SetAllowUnsafeProperty(true);
             byte[] rawInt = Hex.Decode("00000010FF000000");
             DerInteger i = new DerInteger(rawInt);
-            IsEquals(72997666816L, i.Value.LongValue);
+            CheckLongValue(i, 72997666816L);
         }
 
         public void DoTestLooseValidEncoding_FF_32BAligned()
@@ -283,7 +294,7 @@ namespace Org.BouncyCastle.Asn1.Tests
             SetAllowUnsafeProperty(true);
             byte[] rawInt = Hex.Decode("FFFFFF10FF000000");
             DerInteger i = new DerInteger(rawInt);
-            IsEquals(-1026513960960L, i.Value.LongValue);
+            CheckLongValue(i, -1026513960960L);
         }
 
         public void DoTestLooseValidEncoding_FF_32BAligned_1not0()
@@ -294,7 +305,7 @@ namespace Org.BouncyCastle.Asn1.Tests
             SetAllowUnsafeProperty(true);
             byte[] rawInt = Hex.Decode("FFFEFF10FF000000");
             DerInteger i = new DerInteger(rawInt);
-            IsEquals(-282501490671616L, i.Value.LongValue);
+            CheckLongValue(i, -282501490671616L);
         }
 
         public void DoTestLooseValidEncoding_FF_32BAligned_2not0()
@@ -305,7 +316,7 @@ namespace Org.BouncyCastle.Asn1.Tests
             SetAllowUnsafeProperty(true);
             byte[] rawInt = Hex.Decode("FFFFFE10FF000000");
             DerInteger i = new DerInteger(rawInt);
-            IsEquals(-2126025588736L, i.Value.LongValue);
+            CheckLongValue(i, -2126025588736L);
         }
 
         public void DoTestOversizedEncoding()
@@ -325,8 +336,17 @@ namespace Org.BouncyCastle.Asn1.Tests
             }
             catch (ArgumentException e)
             {
-                IsEquals("malformed integer", e.Message);
+                CheckArgumentException(e, "malformed integer");
             }
+        }
+        private void CheckArgumentException(ArgumentException e, String expectedMessage)
+        {
+            IsTrue(e.Message.StartsWith(expectedMessage));
+        }
+
+        private void CheckArgumentException(String errorText, ArgumentException e, String expectedMessage)
+        {
+            IsTrue(errorText, e.Message.StartsWith(expectedMessage));
         }
 
         private void SetAllowUnsafeProperty(bool allowUnsafe)
@@ -336,6 +356,24 @@ namespace Org.BouncyCastle.Asn1.Tests
 #else
             Environment.SetEnvironmentVariable(DerInteger.AllowUnsafeProperty, allowUnsafe ? "true" : "false");
 #endif
+        }
+
+        private void CheckIntValue(DerInteger i, int n)
+        {
+            BigInteger val = i.Value;
+            IsEquals(val.IntValue, n);
+            IsEquals(val.IntValueExact, n);
+            IsEquals(i.IntValueExact, n);
+            IsTrue(i.HasValue(n));
+        }
+
+        private void CheckLongValue(DerInteger i, long n)
+        {
+            BigInteger val = i.Value;
+            IsEquals(val.LongValue, n);
+            IsEquals(val.LongValueExact, n);
+            IsEquals(i.LongValueExact, n);
+            IsTrue(i.HasValue(n));
         }
 
         public static void Main(

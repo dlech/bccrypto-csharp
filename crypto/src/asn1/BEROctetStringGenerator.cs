@@ -48,7 +48,7 @@ namespace Org.BouncyCastle.Asn1
 			private byte[] _buf;
 			private int    _off;
 			private readonly BerOctetStringGenerator _gen;
-			private readonly DerOutputStream _derOut;
+			private readonly Asn1OutputStream _derOut;
 
 			internal BufferedBerOctetStream(
 				BerOctetStringGenerator	gen,
@@ -57,7 +57,7 @@ namespace Org.BouncyCastle.Asn1
 				_gen = gen;
 				_buf = buf;
 				_off = 0;
-				_derOut = new DerOutputStream(_gen.Out);
+				_derOut = Asn1OutputStream.Create(_gen.Out, Asn1Encodable.Der);
 			}
 
 			public override void WriteByte(
@@ -67,40 +67,40 @@ namespace Org.BouncyCastle.Asn1
 
 				if (_off == _buf.Length)
 				{
-					DerOctetString.Encode(_derOut, _buf, 0, _off);
+					DerOctetString.Encode(_derOut, true, _buf, 0, _off);
 					_off = 0;
 				}
 			}
 
-			public override void Write(
-				byte[] buf,
-				int    offset,
-				int    len)
+			public override void Write(byte[] b, int off, int len)
 			{
-				while (len > 0)
-				{
-					int numToCopy = System.Math.Min(len, _buf.Length - _off);
+                int bufLen = _buf.Length;
+                int available = bufLen - _off;
+                if (len < available)
+                {
+                    Array.Copy(b, off, _buf, _off, len);
+                    _off += len;
+                    return;
+                }
 
-					if (numToCopy == _buf.Length)
-					{
-						DerOctetString.Encode(_derOut, buf, offset, numToCopy);
-					}
-					else
-					{
-						Array.Copy(buf, offset, _buf, _off, numToCopy);
+                int count = 0;
+                if (_off > 0)
+                {
+                    Array.Copy(b, off, _buf, _off, available);
+                    count += available;
+                    DerOctetString.Encode(_derOut, true, _buf, 0, bufLen);
+                }
 
-						_off += numToCopy;
-						if (_off < _buf.Length)
-							break;
+                int remaining;
+                while ((remaining = len - count) >= bufLen)
+                {
+                    DerOctetString.Encode(_derOut, true, b, off + count, bufLen);
+                    count += bufLen;
+                }
 
-						DerOctetString.Encode(_derOut, _buf, 0, _off);
-						_off = 0;
-					}
-
-					offset += numToCopy;
-					len -= numToCopy;
-				}
-			}
+                Array.Copy(b, off + count, _buf, 0, remaining);
+                this._off = remaining;
+            }
 
 #if PORTABLE
             protected override void Dispose(bool disposing)
@@ -109,8 +109,10 @@ namespace Org.BouncyCastle.Asn1
                 {
 				    if (_off != 0)
 				    {
-					    DerOctetString.Encode(_derOut, _buf, 0, _off);
+					    DerOctetString.Encode(_derOut, true, _buf, 0, _off);
 				    }
+
+                    _derOut.FlushInternal();
 
 				    _gen.WriteBerEnd();
                 }
@@ -121,10 +123,12 @@ namespace Org.BouncyCastle.Asn1
 			{
 				if (_off != 0)
 				{
-					DerOctetString.Encode(_derOut, _buf, 0, _off);
+					DerOctetString.Encode(_derOut, true, _buf, 0, _off);
 				}
 
-				_gen.WriteBerEnd();
+                _derOut.FlushInternal();
+
+                _gen.WriteBerEnd();
 				base.Close();
 			}
 #endif

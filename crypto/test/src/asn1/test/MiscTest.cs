@@ -46,7 +46,7 @@ namespace Org.BouncyCastle.Asn1.Tests
             }
             catch (ArgumentException e)
             {
-                IsTrue("wrong exc", "malformed integer".Equals(e.Message));
+                IsTrue("wrong exc", e.Message.StartsWith("malformed integer"));
             }
 
             try
@@ -55,7 +55,7 @@ namespace Org.BouncyCastle.Asn1.Tests
             }
             catch (ArgumentException e)
             {
-                IsTrue("wrong exc", "malformed integer".Equals(e.Message));
+                IsTrue("wrong exc", e.Message.StartsWith("malformed integer"));
             }
 
             try
@@ -64,7 +64,7 @@ namespace Org.BouncyCastle.Asn1.Tests
             }
             catch (ArgumentException e)
             {
-                IsTrue("wrong exc", "malformed enumerated".Equals(e.Message));
+                IsTrue("wrong exc", e.Message.StartsWith("malformed enumerated"));
             }
 
             try
@@ -73,7 +73,7 @@ namespace Org.BouncyCastle.Asn1.Tests
             }
             catch (ArgumentException e)
             {
-                IsTrue("wrong exc", "malformed enumerated".Equals(e.Message));
+                IsTrue("wrong exc", e.Message.StartsWith("malformed enumerated"));
             }
         }
 
@@ -93,7 +93,7 @@ namespace Org.BouncyCastle.Asn1.Tests
             byte[] data = Base64.Decode("MA4ECAECAwQFBgcIAgIAgAMCBSAWBWhlbGxvMAoECAECAwQFBgcIFgtodHRwOi8vdGVzdA==");
 
             MemoryStream bOut = new MemoryStream();
-            Asn1OutputStream aOut = new Asn1OutputStream(bOut);
+            Asn1OutputStream aOut = Asn1OutputStream.Create(bOut);
 
             for (int i = 0; i != values.Length; i++)
             {

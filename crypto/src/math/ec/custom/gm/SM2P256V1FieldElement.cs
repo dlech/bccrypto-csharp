@@ -2,13 +2,15 @@
 
 using Org.BouncyCastle.Math.Raw;
 using Org.BouncyCastle.Utilities;
+using Org.BouncyCastle.Utilities.Encoders;
 
 namespace Org.BouncyCastle.Math.EC.Custom.GM
 {
     internal class SM2P256V1FieldElement
         : AbstractFpFieldElement
     {
-        public static readonly BigInteger Q = SM2P256V1Curve.q;
+        public static readonly BigInteger Q = new BigInteger(1,
+            Hex.DecodeStrict("FFFFFFFEFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00000000FFFFFFFFFFFFFFFF"));
 
         protected internal readonly uint[] x;
 
@@ -92,7 +94,7 @@ namespace Org.BouncyCastle.Math.EC.Custom.GM
         {
             //return Multiply(b.Invert());
             uint[] z = Nat256.Create();
-            Mod.Invert(SM2P256V1Field.P, ((SM2P256V1FieldElement)b).x, z);
+            SM2P256V1Field.Inv(((SM2P256V1FieldElement)b).x, z);
             SM2P256V1Field.Multiply(z, x, z);
             return new SM2P256V1FieldElement(z);
         }
@@ -115,7 +117,7 @@ namespace Org.BouncyCastle.Math.EC.Custom.GM
         {
             //return new SM2P256V1FieldElement(ToBigInteger().ModInverse(Q));
             uint[] z = Nat256.Create();
-            Mod.Invert(SM2P256V1Field.P, x, z);
+            SM2P256V1Field.Inv(x, z);
             return new SM2P256V1FieldElement(z);
         }
 
@@ -129,7 +131,7 @@ namespace Org.BouncyCastle.Math.EC.Custom.GM
              * Raise this element to the exponent 2^254 - 2^222 - 2^94 + 2^62
              *
              * Breaking up the exponent's binary representation into "repunits", we get:
-             * { 31 1s } { 1 0s } { 128 1s } { 31 0s } { 1 1s } { 62 0s}
+             * { 31 1s } { 1 0s } { 128 1s } { 31 0s } { 1 1s } { 62 0s }
              *
              * We use an addition chain for the beginning: [1], 2, 3, 6, 12, [24], 30, [31] 
              */

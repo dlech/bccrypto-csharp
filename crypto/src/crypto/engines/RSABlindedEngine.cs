@@ -49,13 +49,29 @@ namespace Org.BouncyCastle.Crypto.Engines
             {
                 ParametersWithRandom rParam = (ParametersWithRandom)param;
 
-                key = (RsaKeyParameters)rParam.Parameters;
-                random = rParam.Random;
+                this.key = (RsaKeyParameters)rParam.Parameters;
+
+                if (key is RsaPrivateCrtKeyParameters)
+                {
+                    this.random = rParam.Random;
+                }
+                else
+                {
+                    this.random = null;
+                }
             }
             else
             {
-                key = (RsaKeyParameters)param;
-                random = new SecureRandom();
+                this.key = (RsaKeyParameters)param;
+
+                if (key is RsaPrivateCrtKeyParameters)
+                {
+                    this.random = new SecureRandom();
+                }
+                else
+                {
+                    this.random = null;
+                }
             }
         }
 
@@ -116,7 +132,7 @@ namespace Org.BouncyCastle.Crypto.Engines
                     BigInteger blindedInput = r.ModPow(e, m).Multiply(input).Mod(m);
                     BigInteger blindedResult = core.ProcessBlock(blindedInput);
 
-                    BigInteger rInv = r.ModInverse(m);
+                    BigInteger rInv = BigIntegers.ModOddInverse(m, r);
                     result = blindedResult.Multiply(rInv).Mod(m);
 
                     // defence against Arjen Lenstra’s CRT attack

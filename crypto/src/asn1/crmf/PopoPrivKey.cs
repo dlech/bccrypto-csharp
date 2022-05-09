@@ -26,7 +26,7 @@ namespace Org.BouncyCastle.Asn1.Crmf
                 this.obj = DerBitString.GetInstance(obj, false);
                 break;
             case subsequentMessage:
-                this.obj = SubsequentMessage.ValueOf(DerInteger.GetInstance(obj, false).Value.IntValue);
+                this.obj = SubsequentMessage.ValueOf(DerInteger.GetInstance(obj, false).IntValueExact);
                 break;
             case dhMAC:
                 this.obj = DerBitString.GetInstance(obj, false);
@@ -44,7 +44,7 @@ namespace Org.BouncyCastle.Asn1.Crmf
 
         public static PopoPrivKey GetInstance(Asn1TaggedObject tagged, bool isExplicit)
         {
-            return new PopoPrivKey(Asn1TaggedObject.GetInstance(tagged.GetObject()));
+            return new PopoPrivKey(Asn1TaggedObject.GetInstance(tagged, true));
         }
 
         public PopoPrivKey(SubsequentMessage msg)

@@ -10,7 +10,8 @@ namespace Org.BouncyCastle.Math.EC.Custom.Sec
         private const ulong M27 = ulong.MaxValue >> 37;
         private const ulong M57 = ulong.MaxValue >> 7;
 
-        private static readonly ulong[] ROOT_Z = new ulong[]{ 0x0C30C30C30C30808UL, 0x30C30C30C30C30C3UL, 0x820820820820830CUL, 0x0820820820820820UL, 0x2082082UL };
+        private static readonly ulong[] ROOT_Z = new ulong[]{ 0x0C30C30C30C30808UL, 0x30C30C30C30C30C3UL,
+            0x820820820820830CUL, 0x0820820820820820UL, 0x2082082UL };
 
         public static void Add(ulong[] x, ulong[] y, ulong[] z)
         {
@@ -43,11 +44,33 @@ namespace Org.BouncyCastle.Math.EC.Custom.Sec
             z[4] = x[4];
         }
 
+        private static void AddTo(ulong[] x, ulong[] z)
+        {
+            z[0] ^= x[0];
+            z[1] ^= x[1];
+            z[2] ^= x[2];
+            z[3] ^= x[3];
+            z[4] ^= x[4];
+        }
+
         public static ulong[] FromBigInteger(BigInteger x)
         {
-            ulong[] z = Nat320.FromBigInteger64(x);
-            Reduce37(z, 0);
-            return z;
+            return Nat.FromBigInteger64(283, x);
+        }
+
+        public static void HalfTrace(ulong[] x, ulong[] z)
+        {
+            ulong[] tt = Nat.Create64(9);
+
+            Nat320.Copy64(x, z);
+            for (int i = 1; i < 283; i += 2)
+            {
+                ImplSquare(z, tt);
+                Reduce(tt, z);
+                ImplSquare(z, tt);
+                Reduce(tt, z);
+                AddTo(x, z);
+            }
         }
 
         public static void Invert(ulong[] x, ulong[] z)
@@ -241,32 +264,33 @@ namespace Org.BouncyCastle.Math.EC.Custom.Sec
             ImplExpand(x, a);
             ImplExpand(y, b);
 
+            ulong[] u = zz;
             ulong[] p = new ulong[26];
 
-            ImplMulw(a[0], b[0], p, 0);                                 // m1
-            ImplMulw(a[1], b[1], p, 2);                                 // m2
-            ImplMulw(a[2], b[2], p, 4);                                 // m3
-            ImplMulw(a[3], b[3], p, 6);                                 // m4
-            ImplMulw(a[4], b[4], p, 8);                                 // m5
+            ImplMulw(u, a[0], b[0], p, 0);                  // m1
+            ImplMulw(u, a[1], b[1], p, 2);                  // m2
+            ImplMulw(u, a[2], b[2], p, 4);                  // m3
+            ImplMulw(u, a[3], b[3], p, 6);                  // m4
+            ImplMulw(u, a[4], b[4], p, 8);                  // m5
 
             ulong u0 = a[0] ^ a[1], v0 = b[0] ^ b[1];
             ulong u1 = a[0] ^ a[2], v1 = b[0] ^ b[2];
             ulong u2 = a[2] ^ a[4], v2 = b[2] ^ b[4];
             ulong u3 = a[3] ^ a[4], v3 = b[3] ^ b[4];
 
-            ImplMulw(u1 ^ a[3], v1 ^ b[3], p, 18);                      // m10
-            ImplMulw(u2 ^ a[1], v2 ^ b[1], p, 20);                      // m11
+            ImplMulw(u, u1 ^ a[3], v1 ^ b[3], p, 18);       // m10
+            ImplMulw(u, u2 ^ a[1], v2 ^ b[1], p, 20);       // m11
 
             ulong A4 = u0 ^ u3  , B4 = v0 ^ v3;
             ulong A5 = A4 ^ a[2], B5 = B4 ^ b[2];
 
-            ImplMulw(A4, B4, p, 22);                                    // m12
-            ImplMulw(A5, B5, p, 24);                                    // m13
+            ImplMulw(u, A4, B4, p, 22);                     // m12
+            ImplMulw(u, A5, B5, p, 24);                     // m13
 
-            ImplMulw(u0, v0, p, 10);                                    // m6
-            ImplMulw(u1, v1, p, 12);                                    // m7
-            ImplMulw(u2, v2, p, 14);                                    // m8
-            ImplMulw(u3, v3, p, 16);                                    // m9
+            ImplMulw(u, u0, v0, p, 10);                     // m6
+            ImplMulw(u, u1, v1, p, 12);                     // m7
+            ImplMulw(u, u2, v2, p, 14);                     // m8
+            ImplMulw(u, u3, v3, p, 16);                     // m9
 
 
             // Original method, corresponding to formula (16)
@@ -353,12 +377,11 @@ namespace Org.BouncyCastle.Math.EC.Custom.Sec
             ImplCompactExt(zz);
         }
 
-        protected static void ImplMulw(ulong x, ulong y, ulong[] z, int zOff)
+        protected static void ImplMulw(ulong[] u, ulong x, ulong y, ulong[] z, int zOff)
         {
             Debug.Assert(x >> 57 == 0);
             Debug.Assert(y >> 57 == 0);
 
-            ulong[] u = new ulong[8];
             //u[0] = 0;
             u[1] = y;
             u[2] = u[1] << 1;
@@ -392,10 +415,7 @@ namespace Org.BouncyCastle.Math.EC.Custom.Sec
 
         protected static void ImplSquare(ulong[] x, ulong[] zz)
         {
-            for (int i = 0; i < 4; ++i)
-            {
-                Interleave.Expand64To128(x[i], zz, i << 1);
-            }
+            Interleave.Expand64To128(x, 0, 4, zz, 0);
             zz[8] = Interleave.Expand32to64((uint)x[4]);
         }
     }

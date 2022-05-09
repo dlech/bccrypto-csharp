@@ -6,6 +6,7 @@ using Org.BouncyCastle.Math;
 using Org.BouncyCastle.Math.EC;
 using Org.BouncyCastle.Math.EC.Multiplier;
 using Org.BouncyCastle.Security;
+using Org.BouncyCastle.Utilities;
 
 namespace Org.BouncyCastle.Crypto.Signers
 {
@@ -78,12 +79,7 @@ namespace Org.BouncyCastle.Crypto.Signers
                 throw new InvalidOperationException("not initialized for signing");
             }
 
-            byte[] mRev = new byte[message.Length]; // conversion is little-endian
-            for (int i = 0; i != mRev.Length; i++)
-            {
-                mRev[i] = message[mRev.Length - 1 - i];
-            }
-
+            byte[] mRev = Arrays.Reverse(message); // conversion is little-endian
             BigInteger e = new BigInteger(1, mRev);
 
             ECDomainParameters ec = key.Parameters;
@@ -133,12 +129,7 @@ namespace Org.BouncyCastle.Crypto.Signers
                 throw new InvalidOperationException("not initialized for verification");
             }
 
-            byte[] mRev = new byte[message.Length]; // conversion is little-endian
-            for (int i = 0; i != mRev.Length; i++)
-            {
-                mRev[i] = message[mRev.Length - 1 - i];
-            }
-
+            byte[] mRev = Arrays.Reverse(message); // conversion is little-endian
             BigInteger e = new BigInteger(1, mRev);
             BigInteger n = key.Parameters.N;
 
@@ -154,7 +145,7 @@ namespace Org.BouncyCastle.Crypto.Signers
                 return false;
             }
 
-            BigInteger v = e.ModInverse(n);
+            BigInteger v = BigIntegers.ModOddInverseVar(n, e);
 
             BigInteger z1 = s.Multiply(v).Mod(n);
             BigInteger z2 = (n.Subtract(r)).Multiply(v).Mod(n);

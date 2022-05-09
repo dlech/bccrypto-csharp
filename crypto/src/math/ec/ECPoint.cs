@@ -1,9 +1,9 @@
 using System;
 using System.Collections;
-using System.Diagnostics;
 using System.Text;
 
 using Org.BouncyCastle.Math.EC.Multiplier;
+using Org.BouncyCastle.Security;
 
 namespace Org.BouncyCastle.Math.EC
 {
@@ -12,6 +12,8 @@ namespace Org.BouncyCastle.Math.EC
      */
     public abstract class ECPoint
     {
+        private static readonly SecureRandom Random = new SecureRandom();
+
         protected static ECFieldElement[] EMPTY_ZS = new ECFieldElement[0];
 
         protected static ECFieldElement[] GetInitialZCoords(ECCurve curve)
@@ -230,13 +232,29 @@ namespace Org.BouncyCastle.Math.EC
                 }
                 default:
                 {
-                    ECFieldElement Z1 = RawZCoords[0];
-                    if (Z1.IsOne)
-                    {
+                    ECFieldElement z = RawZCoords[0];
+                    if (z.IsOne)
                         return this;
-                    }
 
-                    return Normalize(Z1.Invert());
+                    if (null == m_curve)
+                        throw new InvalidOperationException("Detached points must be in affine coordinates");
+
+                    /*
+                     * Use blinding to avoid the side-channel leak identified and analyzed in the paper
+                     * "Yet another GCD based inversion side-channel affecting ECC implementations" by Nir
+                     * Drucker and Shay Gueron.
+                     *
+                     * To blind the calculation of z^-1, choose a multiplicative (i.e. non-zero) field
+                     * element 'b' uniformly at random, then calculate the result instead as (z * b)^-1 * b.
+                     * Any side-channel in the implementation of 'inverse' now only leaks information about
+                     * the value (z * b), and no longer reveals information about 'z' itself.
+                     */
+                    // TODO Add CryptoServicesRegistrar class and use here
+                    //SecureRandom r = CryptoServicesRegistrar.GetSecureRandom();
+                    SecureRandom r = Random;
+                    ECFieldElement b = m_curve.RandomFieldElementMult(r);
+                    ECFieldElement zInv = z.Multiply(b).Invert().Multiply(b);
+                    return Normalize(zInv);
                 }
             }
         }
@@ -306,11 +324,25 @@ namespace Org.BouncyCastle.Math.EC
                 : Curve.CreateRawPoint(RawXCoord.Multiply(scale), RawYCoord, RawZCoords, IsCompressed);
         }
 
+        public virtual ECPoint ScaleXNegateY(ECFieldElement scale)
+        {
+            return IsInfinity
+                ? this
+                : Curve.CreateRawPoint(RawXCoord.Multiply(scale), RawYCoord.Negate(), RawZCoords, IsCompressed);
+        }
+
         public virtual ECPoint ScaleY(ECFieldElement scale)
         {
             return IsInfinity
                 ? this
                 : Curve.CreateRawPoint(RawXCoord, RawYCoord.Multiply(scale), RawZCoords, IsCompressed);
+        }
+
+        public virtual ECPoint ScaleYNegateX(ECFieldElement scale)
+        {
+            return IsInfinity
+                ? this
+                : Curve.CreateRawPoint(RawXCoord.Negate(), RawYCoord.Multiply(scale), RawZCoords, IsCompressed);
         }
 
         public override bool Equals(object obj)
@@ -1421,34 +1453,44 @@ namespace Org.BouncyCastle.Math.EC
             if (BigInteger.Two.Equals(cofactor))
             {
                 /*
-                 *  Check that the trace of (X + A) is 0, then there exists a solution to L^2 + L = X + A,
-                 *  and so a halving is possible, so this point is the double of another.  
+                 * Check that 0 == Tr(X + A); then there exists a solution to L^2 + L = X + A, and
+                 * so a halving is possible, so this point is the double of another.
+                 * 
+                 * Note: Tr(A) == 1 for cofactor 2 curves.
                  */
                 ECPoint N = this.Normalize();
                 ECFieldElement X = N.AffineXCoord;
-                ECFieldElement rhs = X.Add(curve.A);
-                return ((AbstractF2mFieldElement)rhs).Trace() == 0;
+                return 0 != ((AbstractF2mFieldElement)X).Trace();
             }
             if (BigInteger.ValueOf(4).Equals(cofactor))
             {
                 /*
                  * Solve L^2 + L = X + A to find the half of this point, if it exists (fail if not).
-                 * Generate both possibilities for the square of the half-point's x-coordinate (w),
-                 * and check if Tr(w + A) == 0 for at least one; then a second halving is possible
-                 * (see comments for cofactor 2 above), so this point is four times another.
                  * 
-                 * Note: Tr(x^2) == Tr(x). 
+                 * Note: Tr(A) == 0 for cofactor 4 curves.
                  */
                 ECPoint N = this.Normalize();
                 ECFieldElement X = N.AffineXCoord;
-                ECFieldElement lambda = ((AbstractF2mCurve)curve).SolveQuadraticEquation(X.Add(curve.A));
-                if (lambda == null)
+                ECFieldElement L = ((AbstractF2mCurve)curve).SolveQuadraticEquation(X.Add(curve.A));
+                if (null == L)
                     return false;
 
-                ECFieldElement w = X.Multiply(lambda).Add(N.AffineYCoord);
-                ECFieldElement t = w.Add(curve.A);
-                return ((AbstractF2mFieldElement)t).Trace() == 0
-                    || ((AbstractF2mFieldElement)(t.Add(X))).Trace() == 0;
+                /*
+                 * A solution exists, therefore 0 == Tr(X + A) == Tr(X).
+                 */
+                ECFieldElement Y = N.AffineYCoord;
+                ECFieldElement T = X.Multiply(L).Add(Y);
+
+                /*
+                 * Either T or (T + X) is the square of a half-point's x coordinate (hx). In either
+                 * case, the half-point can be halved again when 0 == Tr(hx + A).
+                 * 
+                 * Note: Tr(hx + A) == Tr(hx) == Tr(hx^2) == Tr(T) == Tr(T + X)
+                 *
+                 * Check that 0 == Tr(T); then there exists a solution to L^2 + L = hx + A, and so a
+                 * second halving is possible and this point is four times some other.
+                 */
+                return 0 == ((AbstractF2mFieldElement)T).Trace();
             }
 
             return base.SatisfiesOrder();
@@ -1490,6 +1532,11 @@ namespace Org.BouncyCastle.Math.EC
             }
         }
 
+        public override ECPoint ScaleXNegateY(ECFieldElement scale)
+        {
+            return ScaleX(scale);
+        }
+
         public override ECPoint ScaleY(ECFieldElement scale)
         {
             if (this.IsInfinity)
@@ -1512,6 +1559,11 @@ namespace Org.BouncyCastle.Math.EC
                 return base.ScaleY(scale);
             }
             }
+        }
+
+        public override ECPoint ScaleYNegateX(ECFieldElement scale)
+        {
+            return ScaleY(scale);
         }
 
         public override ECPoint Subtract(ECPoint b)
@@ -1912,7 +1964,7 @@ namespace Org.BouncyCastle.Math.EC
             ECFieldElement X1 = this.RawXCoord;
             if (X1.IsZero)
             {
-                // A point with X == 0 is it's own additive inverse
+                // A point with X == 0 is its own additive inverse
                 return curve.Infinity;
             }
 
@@ -2022,7 +2074,7 @@ namespace Org.BouncyCastle.Math.EC
             ECFieldElement X1 = this.RawXCoord;
             if (X1.IsZero)
             {
-                // A point with X == 0 is it's own additive inverse
+                // A point with X == 0 is its own additive inverse
                 return b;
             }
 

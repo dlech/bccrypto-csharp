@@ -50,6 +50,12 @@ namespace Org.BouncyCastle.Bcpg.OpenPgp
                         {
                             l.Add(new PgpSignature(bcpgIn));
                         }
+                        catch (UnsupportedPacketVersionException e)
+                        {
+                            // Signatures of unsupported version MUST BE ignored
+                            // see: https://tests.sequoia-pgp.org/#Detached_signatures_with_unknown_packets
+                            continue;
+                        }
                         catch (PgpException e)
                         {
                             throw new IOException("can't create signature object: " + e);
@@ -61,7 +67,7 @@ namespace Org.BouncyCastle.Bcpg.OpenPgp
                     {
                         sigs[i] = (PgpSignature)l[i];
                     }
-					return new PgpSignatureList(sigs);
+                    return new PgpSignatureList(sigs);
                 }
                 case PacketTag.SecretKey:
                     try
@@ -139,5 +145,24 @@ namespace Org.BouncyCastle.Bcpg.OpenPgp
 			}
 			return result;
 		}
-	}
+
+        /// <summary>
+        /// Read all available objects, returning only those that are assignable to the specified type.
+        /// </summary>
+        /// <param name="type">The type of objects to return. All other objects are ignored.</param>
+        /// <returns>An <c>IList</c> containing the filtered objects from this factory, in order.</returns>
+        public IList FilterPgpObjects(Type type)
+        {
+            IList result = Platform.CreateArrayList();
+            PgpObject pgpObject;
+            while ((pgpObject = NextPgpObject()) != null)
+            {
+                if (type.IsInstanceOfType(pgpObject))
+                {
+                    result.Add(pgpObject);
+                }
+            }
+            return result;
+        }
+    }
 }

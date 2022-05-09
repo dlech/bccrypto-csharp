@@ -7,7 +7,6 @@ using NUnit.Framework;
 
 using Org.BouncyCastle.Bcpg.Attr;
 using Org.BouncyCastle.Crypto;
-using Org.BouncyCastle.Crypto.Generators;
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Math;
 using Org.BouncyCastle.Security;
@@ -1213,11 +1212,10 @@ namespace Org.BouncyCastle.Bcpg.OpenPgp.Tests
 
         public override string Name
         {
-            get { return "PGPRSATest"; }
+            get { return "PgpRsaTest"; }
         }
 
-        public static void Main(
-            string[] args)
+        public static void Main(string[] args)
         {
             RunTest(new PgpRsaTest());
         }

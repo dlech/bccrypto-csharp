@@ -1,11 +1,13 @@
 using System;
 using System.Collections;
+using System.IO;
 using System.Text;
 
 using Org.BouncyCastle.Asn1;
 using Org.BouncyCastle.Asn1.Utilities;
 using Org.BouncyCastle.Asn1.X509;
 using Org.BouncyCastle.Crypto;
+using Org.BouncyCastle.Crypto.Operators;
 using Org.BouncyCastle.Math;
 using Org.BouncyCastle.Security;
 using Org.BouncyCastle.Security.Certificates;
@@ -14,7 +16,6 @@ using Org.BouncyCastle.Utilities.Collections;
 using Org.BouncyCastle.Utilities.Date;
 using Org.BouncyCastle.Utilities.Encoders;
 using Org.BouncyCastle.X509.Extension;
-using Org.BouncyCastle.Crypto.Operators;
 
 namespace Org.BouncyCastle.X509
 {
@@ -31,13 +32,51 @@ namespace Org.BouncyCastle.X509
 		: X509ExtensionBase
 		// TODO Add interface Crl?
 	{
-		private readonly CertificateList c;
+        private class CachedEncoding
+        {
+            private readonly byte[] encoding;
+            private readonly CrlException exception;
+
+            internal CachedEncoding(byte[] encoding, CrlException exception)
+            {
+                this.encoding = encoding;
+                this.exception = exception;
+            }
+
+            internal byte[] Encoding
+            {
+                get { return encoding; }
+            }
+
+            internal byte[] GetEncoded()
+            {
+                if (null != exception)
+                    throw exception;
+
+                if (null == encoding)
+                    throw new CrlException();
+
+                return encoding;
+            }
+        }
+
+        private readonly CertificateList c;
 		private readonly string sigAlgName;
 		private readonly byte[] sigAlgParams;
 		private readonly bool isIndirect;
 
-		public X509Crl(
-			CertificateList c)
+        private readonly object cacheLock = new object();
+        private CachedEncoding cachedEncoding;
+
+        private volatile bool hashValueSet;
+        private volatile int hashValue;
+
+        public X509Crl(byte[] encoding)
+            : this(CertificateList.GetInstance(encoding))
+        {
+        }
+
+        public X509Crl(CertificateList c)
 		{
 			this.c = c;
 
@@ -45,16 +84,10 @@ namespace Org.BouncyCastle.X509
 			{
 				this.sigAlgName = X509SignatureUtilities.GetSignatureName(c.SignatureAlgorithm);
 
-				if (c.SignatureAlgorithm.Parameters != null)
-				{
-					this.sigAlgParams = ((Asn1Encodable)c.SignatureAlgorithm.Parameters).GetDerEncoded();
-				}
-				else
-				{
-					this.sigAlgParams = null;
-				}
+                Asn1Encodable parameters = c.SignatureAlgorithm.Parameters;
+                this.sigAlgParams = (null == parameters) ? null : parameters.GetEncoded(Asn1Encodable.Der);
 
-				this.isIndirect = IsIndirectCrl;
+                this.isIndirect = IsIndirectCrl;
 			}
 			catch (Exception e)
 			{
@@ -62,23 +95,16 @@ namespace Org.BouncyCastle.X509
 			}
 		}
 
-		protected override X509Extensions GetX509Extensions()
+        public virtual CertificateList CertificateList
+        {
+            get { return c; }
+        }
+
+        protected override X509Extensions GetX509Extensions()
 		{
 			return c.Version >= 2
 				?	c.TbsCertList.Extensions
 				:	null;
-		}
-
-		public virtual byte[] GetEncoded()
-		{
-			try
-			{
-				return c.GetDerEncoded();
-			}
-			catch (Exception e)
-			{
-				throw new CrlException(e.ToString());
-			}
 		}
 
 		public virtual void Verify(
@@ -229,27 +255,57 @@ namespace Org.BouncyCastle.X509
 			return Arrays.Clone(sigAlgParams);
 		}
 
-		public override bool Equals(
-			object obj)
+        /// <summary>
+        /// Return the DER encoding of this CRL.
+        /// </summary>
+        /// <returns>A byte array containing the DER encoding of this CRL.</returns>
+        /// <exception cref="CrlException">If there is an error encoding the CRL.</exception>
+        public virtual byte[] GetEncoded()
+        {
+            return Arrays.Clone(GetCachedEncoding().GetEncoded());
+        }
+
+        public override bool Equals(object other)
 		{
-			if (obj == this)
-				return true;
+            if (this == other)
+                return true;
 
-			X509Crl other = obj as X509Crl;
+            X509Crl that = other as X509Crl;
+            if (null == that)
+                return false;
 
-			if (other == null)
-				return false;
+            if (this.hashValueSet && that.hashValueSet)
+            {
+                if (this.hashValue != that.hashValue)
+                    return false;
+            }
+            else if (null == this.cachedEncoding || null == that.cachedEncoding)
+            {
+                DerBitString signature = c.Signature;
+                if (null != signature && !signature.Equals(that.c.Signature))
+                    return false;
+            }
 
-			return c.Equals(other.c);
+            byte[] thisEncoding = this.GetCachedEncoding().Encoding;
+            byte[] thatEncoding = that.GetCachedEncoding().Encoding;
 
-			// NB: May prefer this implementation of Equals if more than one certificate implementation in play
-			//return Arrays.AreEqual(this.GetEncoded(), other.GetEncoded());
+            return null != thisEncoding
+                && null != thatEncoding
+                && Arrays.AreEqual(thisEncoding, thatEncoding);
 		}
 
-		public override int GetHashCode()
-		{
-			return c.GetHashCode();
-		}
+        public override int GetHashCode()
+        {
+            if (!hashValueSet)
+            {
+                byte[] thisEncoding = this.GetCachedEncoding().Encoding;
+
+                hashValue = Arrays.GetHashCode(thisEncoding);
+                hashValueSet = true;
+            }
+
+            return hashValue;
+        }
 
 		/**
 		 * Returns a string representation of this CRL.
@@ -382,15 +438,12 @@ namespace Org.BouncyCastle.X509
 
 			if (certs != null)
 			{
-//				BigInteger serial = ((X509Certificate)cert).SerialNumber;
 				BigInteger serial = cert.SerialNumber;
 
 				for (int i = 0; i < certs.Length; i++)
 				{
-					if (certs[i].UserCertificate.Value.Equals(serial))
-					{
+					if (certs[i].UserCertificate.HasValue(serial))
 						return true;
-					}
 				}
 			}
 
@@ -422,5 +475,37 @@ namespace Org.BouncyCastle.X509
 				return isIndirect;
 			}
 		}
-	}
+
+        private CachedEncoding GetCachedEncoding()
+        {
+            lock (cacheLock)
+            {
+                if (null != cachedEncoding)
+                    return cachedEncoding;
+            }
+
+            byte[] encoding = null;
+            CrlException exception = null;
+            try
+            {
+                encoding = c.GetEncoded(Asn1Encodable.Der);
+            }
+            catch (IOException e)
+            {
+                exception = new CrlException("Failed to DER-encode CRL", e);
+            }
+
+            CachedEncoding temp = new CachedEncoding(encoding, exception);
+
+            lock (cacheLock)
+            {
+                if (null == cachedEncoding)
+                {
+                    cachedEncoding = temp;
+                }
+
+                return cachedEncoding;
+            }
+        }
+    }
 }

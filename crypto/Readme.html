@@ -31,6 +31,18 @@
 				<a href="#mozTocId3413">Notes:</a>
 		<ol>
             <li>
+                <a href="#mozTocId85325">Release 1.9.0</a>
+            <li>
+                <a href="#mozTocId85324">Release 1.8.10</a>
+            <li>
+                <a href="#mozTocId85323">Release 1.8.9</a>
+            <li>
+                <a href="#mozTocId85322">Release 1.8.8</a>
+            <li>
+                <a href="#mozTocId85321">Release 1.8.7</a>
+            <li>
+                <a href="#mozTocId85320">Release 1.8.6</a>
+            <li>
                 <a href="#mozTocId85319">Release 1.8.5</a>
             <li>
                 <a href="#mozTocId85318">Release 1.8.4</a>
@@ -298,12 +310,140 @@ We state, where EC MQV has not otherwise been disabled or removed:
 		<hr style="WIDTH: 100%; HEIGHT: 2px">
 		<h3><a class="mozTocH3" name="mozTocId3413"></a>Notes:</h3>
 
+        <h4><a class="mozTocH4" name="mozTocId85325"></a>Release 1.9.0, Sunday October 17, 2021</h4>
+
+        <h5>Defects Fixed</h5>
+        <ul>
+            <li>Key sizes are now checked strictly in TwofishEngine.</li>
+            <li>Fixed bzip2 compression of empty contents.</li>
+            <li>Handle CRL with no NextUpdate properly during CertPath validation.</li>
+            <li>Skip marker packets when reading various PGP data.</li>
+            <li>Ignore PGP signatures with invalid version.</li>
+        </ul>
+        <h5>Additional Features and Functionality</h5>
+        <ul>
+            <li>A new TLS API (Org.BouncyCastle.Tls) now replaces the old one (Org.BouncyCastle.Crypto.Tls), which
+            should be considered obsolete. The new API includes support for TLS 1.3.</li>
+            <li>Added support for Format Preserving Encryption.</li>
+            <li>Added support for ParallelHash and TupleHash.</li>
+            <li>Added support for the ARIA cipher.</li>
+        </ul>
+        <h5>Additional Notes</h5>
+        <ul>
+            <li>
+                See the (cumulative) list of GitHub pull requests that we have accepted at
+                <a href="https://github.com/bcgit/bc-csharp/pulls?q=is%3Apr+is%3Aclosed">bcgit/bc-csharp</a>.
+            </li>
+        </ul>
+
+        <h4><a class="mozTocH4" name="mozTocId85324"></a>Release 1.8.10, Tuesday February 16, 2021</h4>
+
+        <h5>Defects Fixed</h5>
+        <ul>
+            <li>Fixed CMS signature verification for RSASSA-PSS when signed attributes are not present.</li>
+            <li>The output size for SHAKE128 (SHAKE256) when used as a fixed-length digest is now 256 (512) bits (also applies to cSHAKE).</li>
+        </ul>
+        <h5>Additional Notes</h5>
+        <ul>
+            <li>
+                See the (cumulative) list of GitHub pull requests that we have accepted at
+                <a href="https://github.com/bcgit/bc-csharp/pulls?q=is%3Apr+is%3Aclosed">bcgit/bc-csharp</a>.
+            </li>
+        </ul>
+
+        <h4><a class="mozTocH4" name="mozTocId85323"></a>Release 1.8.9, Tuesday December 8, 2020</h4>
+
+        <h5>Defects Fixed</h5>
+        <ul>
+            <li>The TimeStampToken generator is now using PkcsObjectIdentifiers.IdAASigningCertificateV2 for the generating SigningCertificateV2.</li>
+        </ul>
+        <h5>Additional Features and Functionality</h5>
+        <ul>
+            <li>Added cSHAKE digest and KMAC.</li>
+            <li>Added support for PKCS#5 Scheme 2 to Pkcs12Store.</li>
+            <li>Improved performance for GCM.</li>
+        </ul>
+        <h5>Additional Notes</h5>
+        <ul>
+            <li>
+                See the (cumulative) list of GitHub pull requests that we have accepted at
+                <a href="https://github.com/bcgit/bc-csharp/pulls?q=is%3Apr+is%3Aclosed">bcgit/bc-csharp</a>.
+            </li>
+        </ul>
+
+        <h4><a class="mozTocH4" name="mozTocId85322"></a>Release 1.8.8, Monday September 21, 2020</h4>
+
+        <h5>Additional Features and Functionality</h5>
+        <ul>
+            <li>Updated TimeStampTokenGenerator from bc-java.</li>
+            <li>Improved performance for constant-time modular inversion ("safegcd").</li>
+            <li>Improved performance for binary EC fields.</li>
+        </ul>
+        <h5>Additional Notes</h5>
+        <ul>
+            <li>
+                See the (cumulative) list of GitHub pull requests that we have accepted at
+                <a href="https://github.com/bcgit/bc-csharp/pulls?q=is%3Apr+is%3Aclosed">bcgit/bc-csharp</a>.
+            </li>
+        </ul>
+
+        <h4><a class="mozTocH4" name="mozTocId85321"></a>Release 1.8.7, Thursday July 30, 2020</h4>
+
+        <h5>Defects Fixed</h5>
+        <ul>
+            <li>ChaCha20Poly1305 could fail for large (&gt;~2GB) files. This has been fixed.</li>
+            <li>EdDSA verifiers now reset correctly after rejecting overly long signatures.</li>
+            <li>DTLS: Fixed infinite loop on IO exceptions.</li>
+        </ul>
+        <h5>Additional Features and Functionality</h5>
+        <ul>
+            <li>DTLS: Retransmission timers now properly apply to flights monolithically.</li>
+            <li>DTLS: Added support for an overall handshake timeout.</li>
+        </ul>
+        <h5>Additional Notes</h5>
+        <ul>
+            <li>
+                See the (cumulative) list of GitHub pull requests that we have accepted at
+                <a href="https://github.com/bcgit/bc-csharp/pulls?q=is%3Apr+is%3Aclosed">bcgit/bc-csharp</a>.
+            </li>
+        </ul>
+
+        <h4><a class="mozTocH4" name="mozTocId85320"></a>Release 1.8.6, Friday February 21, 2020</h4>
+
+        <h5>Defects Fixed</h5>
+        <ul>
+            <li>EdDSA verifiers now reject overly long signatures.</li>
+            <li>Fixed field reduction for custom secp128r1 curve.</li>
+            <li>ASN.1: Enforce no leading zeroes in OID branches (longer than 1 character).</li>
+        </ul>
+        <h5>Additional Features and Functionality</h5>
+        <ul>
+            <li>TLS: BasicTlsPskIdentity now reusable (returns cloned array from GetPsk).</li>
+            <li>Improved performance for multiple ECDSA verifications using same public key.</li>
+            <li>Support has been added for ChaCha20-Poly1305 AEAD mode from RFC 7539.</li>
+            <li>PKCS12: Improved support for certificate-only key stores without password.</li>
+        </ul>
+        <h5>Additional Notes</h5>
+        <ul>
+            <li>
+                See the (cumulative) list of GitHub pull requests that we have accepted at
+                <a href="https://github.com/bcgit/bc-csharp/pulls?q=is%3Apr+is%3Aclosed">bcgit/bc-csharp</a>.
+            </li>
+        </ul>
+
         <h4><a class="mozTocH4" name="mozTocId85319"></a>Release 1.8.5, Thursday January 31, 2019</h4>
 
         <h5>Additional Features and Functionality</h5>
         <ul>
-            <li>Supported added for encoding and decoding of GOST3410-2012 keys</li>
+            <li>Support added for encoding and decoding of GOST3410-2012 keys</li>
             <li>Basic support added for CMP (RFC 4210) and CRMF (RFC 4211), including the PKI archive control.</li>
+        </ul>
+        <h5>Additional Notes</h5>
+        <ul>
+            <li>
+                See the (cumulative) list of GitHub pull requests that we have accepted at
+                <a href="https://github.com/bcgit/bc-csharp/pulls?q=is%3Apr+is%3Aclosed">bcgit/bc-csharp</a>.
+            </li>
         </ul>
 
         <h4><a class="mozTocH4" name="mozTocId85318"></a>Release 1.8.4, Saturday October 27, 2018</h4>

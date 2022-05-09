@@ -35,6 +35,7 @@ namespace Org.BouncyCastle.Crypto.Tls
             client.Init(state.clientContext);
 
             DtlsRecordLayer recordLayer = new DtlsRecordLayer(transport, state.clientContext, client, ContentType.handshake);
+            client.NotifyCloseHandle(recordLayer);
 
             TlsSession sessionToResume = state.client.GetSessionToResume();
             if (sessionToResume != null && sessionToResume.IsResumable)
@@ -81,7 +82,8 @@ namespace Org.BouncyCastle.Crypto.Tls
         internal virtual DtlsTransport ClientHandshake(ClientHandshakeState state, DtlsRecordLayer recordLayer)
         {
             SecurityParameters securityParameters = state.clientContext.SecurityParameters;
-            DtlsReliableHandshake handshake = new DtlsReliableHandshake(state.clientContext, recordLayer);
+            DtlsReliableHandshake handshake = new DtlsReliableHandshake(state.clientContext, recordLayer,
+                state.client.GetHandshakeTimeoutMillis());
 
             byte[] clientHelloBody = GenerateClientHello(state, state.client);
 

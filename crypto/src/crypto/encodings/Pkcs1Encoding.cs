@@ -41,7 +41,7 @@ namespace Org.BouncyCastle.Crypto.Encodings
         {
             string strictProperty = Platform.GetEnvironmentVariable(StrictLengthEnabledProperty);
 
-            strictLengthEnabled = new bool[]{ strictProperty == null || strictProperty.Equals("true")};
+            strictLengthEnabled = new bool[]{ strictProperty == null || Platform.EqualsIgnoreCase("true", strictProperty) };
         }
 
 
@@ -224,7 +224,7 @@ namespace Org.BouncyCastle.Crypto.Encodings
              * Now the padding check, check for no 0 byte in the padding
              */
             int plen = encoded.Length - (
-                      pLen /* Lenght of the PMS */
+                      pLen /* Length of the PMS */
                     +  1 /* Final 0-byte before PMS */
             );
 

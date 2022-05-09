@@ -20,6 +20,7 @@ using Org.BouncyCastle.X509;
 using Org.BouncyCastle.X509.Store;
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Utilities.Collections;
+using Org.BouncyCastle.Crypto.Tls;
 
 namespace Org.BouncyCastle.Cms
 {
@@ -66,7 +67,13 @@ namespace Org.BouncyCastle.Cms
 			AddEntries(PkcsObjectIdentifiers.Sha256WithRsaEncryption, "SHA256", "RSA");
 			AddEntries(PkcsObjectIdentifiers.Sha384WithRsaEncryption, "SHA384", "RSA");
 			AddEntries(PkcsObjectIdentifiers.Sha512WithRsaEncryption, "SHA512", "RSA");
-			AddEntries(X9ObjectIdentifiers.ECDsaWithSha1, "SHA1", "ECDSA");
+            AddEntries(PkcsObjectIdentifiers.Sha512_224WithRSAEncryption, "SHA512(224)", "RSA");
+            AddEntries(PkcsObjectIdentifiers.Sha512_256WithRSAEncryption, "SHA512(256)", "RSA");
+            AddEntries(NistObjectIdentifiers.IdRsassaPkcs1V15WithSha3_224, "SHA3-224", "RSA");
+            AddEntries(NistObjectIdentifiers.IdRsassaPkcs1V15WithSha3_256, "SHA3-256", "RSA");
+            AddEntries(NistObjectIdentifiers.IdRsassaPkcs1V15WithSha3_384, "SHA3-384", "RSA");
+            AddEntries(NistObjectIdentifiers.IdRsassaPkcs1V15WithSha3_512, "SHA3-512", "RSA");
+            AddEntries(X9ObjectIdentifiers.ECDsaWithSha1, "SHA1", "ECDSA");
 			AddEntries(X9ObjectIdentifiers.ECDsaWithSha224, "SHA224", "ECDSA");
 			AddEntries(X9ObjectIdentifiers.ECDsaWithSha256, "SHA256", "ECDSA");
 			AddEntries(X9ObjectIdentifiers.ECDsaWithSha384, "SHA384", "ECDSA");
@@ -84,7 +91,7 @@ namespace Org.BouncyCastle.Cms
 
 			encryptionAlgs.Add(X9ObjectIdentifiers.IdDsa.Id, "DSA");
 			encryptionAlgs.Add(PkcsObjectIdentifiers.RsaEncryption.Id, "RSA");
-			encryptionAlgs.Add(TeleTrusTObjectIdentifiers.TeleTrusTRsaSignatureAlgorithm, "RSA");
+			encryptionAlgs.Add(TeleTrusTObjectIdentifiers.TeleTrusTRsaSignatureAlgorithm.Id, "RSA");
 			encryptionAlgs.Add(X509ObjectIdentifiers.IdEARsa.Id, "RSA");
 			encryptionAlgs.Add(CmsSignedGenerator.EncryptionRsaPss, "RSAandMGF1");
 			encryptionAlgs.Add(CryptoProObjectIdentifiers.GostR3410x94.Id, "GOST3410");
@@ -100,7 +107,13 @@ namespace Org.BouncyCastle.Cms
 			digestAlgs.Add(NistObjectIdentifiers.IdSha256.Id, "SHA256");
 			digestAlgs.Add(NistObjectIdentifiers.IdSha384.Id, "SHA384");
 			digestAlgs.Add(NistObjectIdentifiers.IdSha512.Id, "SHA512");
-			digestAlgs.Add(TeleTrusTObjectIdentifiers.RipeMD128.Id, "RIPEMD128");
+            digestAlgs.Add(NistObjectIdentifiers.IdSha512_224.Id, "SHA512(224)");
+            digestAlgs.Add(NistObjectIdentifiers.IdSha512_256.Id, "SHA512(256)");
+            digestAlgs.Add(NistObjectIdentifiers.IdSha3_224.Id, "SHA3-224");
+            digestAlgs.Add(NistObjectIdentifiers.IdSha3_256.Id, "SHA3-256");
+            digestAlgs.Add(NistObjectIdentifiers.IdSha3_384.Id, "SHA3-384");
+            digestAlgs.Add(NistObjectIdentifiers.IdSha3_512.Id, "SHA3-512");
+            digestAlgs.Add(TeleTrusTObjectIdentifiers.RipeMD128.Id, "RIPEMD128");
 			digestAlgs.Add(TeleTrusTObjectIdentifiers.RipeMD160.Id, "RIPEMD160");
 			digestAlgs.Add(TeleTrusTObjectIdentifiers.RipeMD256.Id, "RIPEMD256");
 			digestAlgs.Add(CryptoProObjectIdentifiers.GostR3411.Id,  "GOST3411");
@@ -127,7 +140,9 @@ namespace Org.BouncyCastle.Cms
             ecAlgorithms.Add(CmsSignedGenerator.DigestSha512, EncryptionECDsaWithSha512);
     }
 
-		/**
+       
+
+        /**
         * Return the digest algorithm using one of the standard JCA string
         * representations rather than the algorithm identifier (if possible).
         */
@@ -422,5 +437,18 @@ namespace Org.BouncyCastle.Cms
 
             return encOID;
         }
-    }
+
+		public IX509Store GetCertificates(Asn1Set certificates)
+		{
+            IList certList = Platform.CreateArrayList();
+			if (certificates != null)
+            {				
+				foreach (Asn1Encodable enc in certificates)
+                {
+					certList.Add(X509CertificateStructure.GetInstance(enc));
+                }				
+			}
+			return new X509CollectionStore(certList);
+		}
+	}
 }

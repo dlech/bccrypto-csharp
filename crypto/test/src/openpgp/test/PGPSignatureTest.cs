@@ -1066,11 +1066,10 @@ namespace Org.BouncyCastle.Bcpg.OpenPgp.Tests
 
         public override string Name
         {
-            get { return "PGPSignatureTest"; }
+            get { return "PgpSignatureTest"; }
         }
 
-        public static void Main(
-            string[] args)
+        public static void Main(string[] args)
         {
             RunTest(new PgpSignatureTest());
         }
